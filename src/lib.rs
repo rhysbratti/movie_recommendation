@@ -3,29 +3,30 @@ use reqwest::{
     Response,
 };
 use serde::Deserialize;
+use std::io;
 
 #[derive(Debug, Deserialize)]
-struct Movie {
-    id: i64,
-    overview: String,
+pub struct Movie {
+    pub id: i64,
+    pub overview: String,
     //popularity: f64,
     //poster_path: Option<String>,
-    release_date: String,
-    title: String,
+    pub release_date: String,
+    pub title: String,
     //vote_average: f64,
     //vote_count: i64,
 }
 
 #[derive(Debug, Deserialize)]
-struct SearchByTitleResponse {
-    results: Vec<Movie>,
+pub struct SearchByTitleResponse {
+    pub results: Vec<Movie>,
 }
 
 #[derive(Debug, Deserialize)]
-struct WatchProvider {
-    logo_path: String,
+pub struct WatchProvider {
+    //logo_path: String,
     //provider_id: i32,
-    provider_name: String,
+    pub provider_name: String,
 }
 
 /* Represents a JSON object of a country/region - contains a list of movie providers broken down by type: */
@@ -33,8 +34,8 @@ struct WatchProvider {
 /* buy - services where movies can be bought like Vudu, Google Play Movies, etc */
 /* rent - services where movies can be rented, like Vudu, Google Play Movies, etc */
 #[derive(Debug, Deserialize)]
-struct WatchProviderRegion {
-    flatrate: Vec<WatchProvider>,
+pub struct WatchProviderRegion {
+    pub flatrate: Vec<WatchProvider>,
     //buy: Vec<WatchProvider>,
     //rent: Vec<WatchProvider>,
 }
@@ -42,13 +43,24 @@ struct WatchProviderRegion {
 /* Represents a JSON object containing supported countries/regions */
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
-struct WatchProviderRegions {
-    us: WatchProviderRegion,
+pub struct WatchProviderRegions {
+    pub us: WatchProviderRegion,
 }
 
 #[derive(Debug, Deserialize)]
-struct SearchForWatchProvidersResponse {
-    results: WatchProviderRegions,
+pub struct GetWatchProvidersResponse {
+    pub results: WatchProviderRegions,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetMoveDetailsResponse {
+    genres: Vec<Genre>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Genre {
+    id: i32,
+    pub name: String,
 }
 
 /* Struct for interacting with TMDB API */
@@ -77,36 +89,33 @@ impl Tmdb {
             .expect("Failed to make call")
     }
 
+    pub async fn get_movie_details(
+        &self,
+        movie_id: &String,
+    ) -> Result<Vec<Genre>, Box<dyn std::error::Error>> {
+        // https://api.themoviedb.org/3/movie/49521?language=en-US
+
+        let url = format!("{}/movie/{}?language=en-US", self.base_url, movie_id);
+
+        let details_response = self.make_tmdb_request(&url).await;
+
+        let genres = details_response.json::<GetMoveDetailsResponse>().await?;
+
+        Ok(genres.genres)
+    }
+
     /* Searches for movie by title - helpful for retrieving movie IDs */
     pub async fn search_by_title(
         &self,
-        movie_title: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+        movie_title: &String,
+    ) -> Result<SearchByTitleResponse, Box<dyn std::error::Error>> {
         let url = format!("{}/search/movie?query={}", self.base_url, movie_title);
 
         let search_response = self.make_tmdb_request(&url).await;
 
-        if !search_response.status().is_success() {
-            println!(
-                "Error: API request failed with status code {}",
-                search_response.status()
-            );
-            return Ok(());
-        }
-
         let movie_results = search_response.json::<SearchByTitleResponse>().await?;
 
-        for (i, movie) in movie_results.results.iter().enumerate() {
-            if i >= 10 {
-                break;
-            }
-            println!("Title: {}", movie.title);
-            println!("Id: {}", movie.id);
-            println!("Release date: {}", movie.release_date);
-            println!("Overview: {}", movie.overview);
-            println!("-----------------")
-        }
-        Ok(())
+        Ok(movie_results)
     }
 
     /* Gets watch providers by movie ID */
@@ -114,31 +123,18 @@ impl Tmdb {
     /* For this application we are mostly interested in "flatrate" */
     pub async fn get_watch_providers_by_id(
         &self,
-        movie_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+        movie_id: &String,
+    ) -> Result<GetWatchProvidersResponse, Box<dyn std::error::Error>> {
         let url = format!("{}/movie/{}/watch/providers", self.base_url, movie_id);
 
         let provider_response = self.make_tmdb_request(&url).await;
 
-        if !provider_response.status().is_success() {
-            println!(
-                "Error: API request failed with status code {}",
-                provider_response.status()
-            );
-            return Ok(());
-        }
-
         // TODO: Improve error handling for things not available on streaming services
         let providers = provider_response
-            .json::<SearchForWatchProvidersResponse>()
+            .json::<GetWatchProvidersResponse>()
             .await
             .expect("Error Parsing JSON");
 
-        for provider in providers.results.us.flatrate {
-            println!("Name: {}", provider.provider_name);
-            println!("Logo path: {}", provider.logo_path);
-        }
-
-        Ok(())
+        Ok(providers)
     }
 }
