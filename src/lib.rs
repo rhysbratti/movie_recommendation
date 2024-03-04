@@ -1,10 +1,11 @@
-use std::fmt::format;
+use std::{fmt::format, fs, future::Future, process::Output};
 
 use reqwest::{
     header::{ACCEPT, AUTHORIZATION, USER_AGENT},
     Response,
 };
 use serde::Deserialize;
+use tokio::task::JoinHandle;
 
 #[derive(Debug, Deserialize)]
 pub struct Movie {
@@ -26,7 +27,7 @@ pub struct SearchByTitleResponse {
 #[derive(Debug, Deserialize)]
 pub struct WatchProvider {
     //logo_path: String,
-    //provider_id: i32,
+    pub provider_id: i32,
     pub provider_name: String,
 }
 
@@ -60,13 +61,29 @@ pub struct GetMoveDetailsResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct Genre {
-    id: i32,
+    pub id: i32,
     pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct GetGenresResponse {
     pub genres: Vec<Genre>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetProvidersResponse {
+    pub results: Vec<WatchProvider>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetRecommendationsResponse {
+    pub results: Vec<Movie>,
+}
+
+pub struct MovieRecommendation {
+    pub movie: Movie,
+    //pub providers: Vec<WatchProvider>,
+    pub fut_prov: tokio::task::JoinHandle<GetWatchProvidersResponse>,
 }
 
 /* Struct for interacting with TMDB API */
@@ -78,7 +95,9 @@ pub struct Tmdb {
 /* Methods for TMDB API endpoints */
 impl Tmdb {
     /* Constructor for building Tmdb object */
-    pub fn new(api_key: String, base_url: String) -> Self {
+    pub fn new() -> Self {
+        let api_key: String = fs::read_to_string("api.key").expect("Unable to read API Key!");
+        let base_url: String = String::from("https://api.themoviedb.org/3/");
         Self { api_key, base_url }
     }
 
@@ -139,7 +158,7 @@ impl Tmdb {
         let providers = provider_response
             .json::<GetWatchProvidersResponse>()
             .await
-            .expect("Error Parsing JSON");
+            .expect(format!("Error parsing {}", movie_id).as_str());
 
         Ok(providers)
     }
@@ -155,5 +174,48 @@ impl Tmdb {
             .expect("Error parsing JSON");
 
         Ok(genres)
+    }
+
+    pub async fn get_providers_list(
+        &self,
+    ) -> Result<GetProvidersResponse, Box<dyn std::error::Error>> {
+        let url = format!(
+            "{}/watch/providers/movie?language=en-US&watch_region=US",
+            self.base_url
+        );
+
+        let providers_response = self.make_tmdb_request(&url).await;
+
+        let providers = providers_response
+            .json::<GetProvidersResponse>()
+            .await
+            .expect("Error parsing JSON");
+
+        Ok(providers)
+    }
+
+    pub async fn get_recommendations(
+        &self,
+        genres: Vec<Genre>,
+        watch_providers: Vec<WatchProvider>,
+    ) -> Result<GetRecommendationsResponse, Box<dyn std::error::Error>> {
+        let genre_ids: String = genres.iter().map(|g| g.id.to_string()).collect::<Vec<_>>().join(",");
+
+        let provider_ids: String = watch_providers.iter().map(|p| p.provider_id.to_string()).collect::<Vec<_>>().join("|");
+        
+        let url = 
+            format!("{}/discover/movie?include_adult=false&include_video=false&language=en-US&page=1&sort_by=popularity.desc&watch_region=US&with_genres={}&with_watch_monetization_types=flatrate&with_watch_providers={}", 
+            self.base_url, 
+            genre_ids, 
+            provider_ids);
+
+        let recommendation_response = self.make_tmdb_request(&url).await;
+
+        let recommendations = recommendation_response
+            .json::<GetRecommendationsResponse>()
+            .await.
+            expect("Error parsing JSON");
+
+        Ok(recommendations)
     }
 }
