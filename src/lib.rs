@@ -1,11 +1,11 @@
-use std::{fmt::format, fs, future::Future, process::Output};
+use std::fs;
+use std::sync::Arc;
 
 use reqwest::{
     header::{ACCEPT, AUTHORIZATION, USER_AGENT},
     Response,
 };
 use serde::Deserialize;
-use tokio::task::JoinHandle;
 
 #[derive(Debug, Deserialize)]
 pub struct Movie {
@@ -87,6 +87,7 @@ pub struct MovieRecommendation {
 }
 
 /* Struct for interacting with TMDB API */
+#[derive(Clone)]
 pub struct Tmdb {
     base_url: String,
     api_key: String,
@@ -99,6 +100,10 @@ impl Tmdb {
         let api_key: String = fs::read_to_string("api.key").expect("Unable to read API Key!");
         let base_url: String = String::from("https://api.themoviedb.org/3/");
         Self { api_key, base_url }
+    }
+
+    pub fn shared_instance() -> Arc<Self> {
+        Arc::new(Self::new())
     }
 
     /* Private function to make TMDB API call */
