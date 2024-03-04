@@ -1,9 +1,10 @@
+use std::fmt::format;
+
 use reqwest::{
     header::{ACCEPT, AUTHORIZATION, USER_AGENT},
     Response,
 };
 use serde::Deserialize;
-use std::io;
 
 #[derive(Debug, Deserialize)]
 pub struct Movie {
@@ -61,6 +62,11 @@ pub struct GetMoveDetailsResponse {
 pub struct Genre {
     id: i32,
     pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetGenresResponse {
+    pub genres: Vec<Genre>,
 }
 
 /* Struct for interacting with TMDB API */
@@ -136,5 +142,18 @@ impl Tmdb {
             .expect("Error Parsing JSON");
 
         Ok(providers)
+    }
+
+    pub async fn get_genre_list(&self) -> Result<GetGenresResponse, Box<dyn std::error::Error>> {
+        let url = format!("{}/genre/movie/list?language=en", self.base_url);
+
+        let genre_response = self.make_tmdb_request(&url).await;
+
+        let genres = genre_response
+            .json::<GetGenresResponse>()
+            .await
+            .expect("Error parsing JSON");
+
+        Ok(genres)
     }
 }
