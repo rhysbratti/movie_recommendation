@@ -1,6 +1,5 @@
 use std::io;
 
-use futures::Future;
 use movie_recommendation::*;
 
 pub enum WorkflowSteps {

@@ -1,9 +1,8 @@
 use std::fs;
 use std::sync::Arc;
-use chrono::prelude::*;
 
 use reqwest::{
-    header::{ACCEPT, AUTHORIZATION, USER_AGENT}, Error, Response
+    header::{ACCEPT, AUTHORIZATION, USER_AGENT}, Response
 };
 use serde::Deserialize;
 

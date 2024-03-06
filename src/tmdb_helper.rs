@@ -1,7 +1,6 @@
 #![allow(dead_code, unused_variables)]
 use futures::Future;
 use movie_recommendation::*;
-use std::cmp::Ordering;
 use std::sync::Arc;
 use std::{env, io};
 
