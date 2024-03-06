@@ -1,11 +1,187 @@
 use std::fs;
 use std::sync::Arc;
+use chrono::prelude::*;
 
 use reqwest::{
-    header::{ACCEPT, AUTHORIZATION, USER_AGENT},
-    Response,
+    header::{ACCEPT, AUTHORIZATION, USER_AGENT}, Error, Response
 };
 use serde::Deserialize;
+
+// Messing with ideas around creating general 'Moods' to map to keywords and genres.
+pub enum Vibe {
+    FamilyNight,
+    Cinematic,
+    Chill,
+    Thrilling,
+    Scary,
+    FeelGood,
+    Funny,
+    Oddball,
+    Adventurous,
+    Goofy,
+    Intense,
+    Serious,
+    Heartfelt,
+    Dramatic,
+}
+
+/*
+    Runtime options
+ */
+pub enum Runtime {
+    Quick,
+    Average,
+    MovieNight,
+    MartinScorsese,
+}
+
+
+/*
+    Traits for filtering enums. Currently have Runtime and Decade
+*/
+pub trait FilterItem {
+    // Gets description for UI
+    fn description(&self) -> String;
+
+    // Gets UI display name
+    fn display_name(&self) -> String;
+
+    // Maps a string to an enum
+    fn from_string(str: String) -> Self;
+
+    // Returns list of all enums possibilities. Currently a bit clunky but will likely change in the future
+    fn get_list() -> Vec<Self> where Self: Sized;
+}
+
+/*
+    FilterItem for Runtime
+*/
+impl FilterItem for Runtime {
+    fn description(&self) -> String {
+        match self {
+            Runtime::Quick => String::from("Bite size movie night, not looking for a commitment."),
+            Runtime::Average => String::from("You got some time, lets make it count"),
+            Runtime::MovieNight => String::from("Grab your popcorn, lets find a movie with that 'wow' factor"),
+            Runtime::MartinScorsese => String::from("You refer to movies as 'films' and have a lot of time on your hands.")
+        }
+    }
+
+    fn display_name(&self) -> String {
+        match self {
+            Runtime::Quick => String::from("Quick"),
+            Runtime::Average => String::from("Average"),
+            Runtime::MovieNight => String::from("Movie Night"),
+            Runtime::MartinScorsese => String::from("Martin Scorsese"),
+        }
+    }
+
+    fn from_string(runtime: String) -> Self {
+        match runtime.as_str(){
+            "Quick" => Runtime::Quick,
+            "Average" => Runtime::Average,
+            "Movie Night" => Runtime::MovieNight,
+            "Martin Scorsese" => Runtime::MartinScorsese,
+            _ => Runtime::Average,
+        }
+    }
+
+    // Yeah I know this probably isn't the best way to do this but I'll figure it out later
+    // TODO: figure this out later
+    fn get_list() -> Vec<Self> where Self: Sized {
+        vec![Runtime::Quick, Runtime::Average, Runtime::MovieNight, Runtime::MartinScorsese]
+    }
+}
+
+
+impl Runtime {
+    // Maps a runtime enum to a runtime range tuple. This is passed in to the /discover endpoint to filter results by run time
+    pub fn runtime(&self) -> (i32, i32) {
+        match self {
+            Runtime::Quick => (60, 90),
+            Runtime::Average => (90,120),
+            Runtime::MovieNight => (120, 150),
+            Runtime::MartinScorsese => (150, 500),
+        }
+    }
+}
+
+/*
+    Decade enum for filtering by Decade
+*/
+pub enum Decade {
+    Classic,
+    Fifties,
+    Sixties,
+    Seventies,
+    Eighties,
+    Nineties,
+    TwoThousands,
+    TwentyTens,
+    Recent,
+}
+
+
+impl Decade {
+    // Map decade enum to a tuple date range. This is passed into the /discover endpoint to filter by release year
+    pub fn year_range(&self) -> (String, String){
+        match self{
+            Decade::Classic => (String::from("1900"), String::from("1949")),
+            Decade::Fifties => (String::from("1950"), String::from("1959")),
+            Decade::Sixties => (String::from("1960"), String::from("1969")),
+            Decade::Seventies => (String::from("1970"), String::from("1979")),
+            Decade::Eighties => (String::from("1980"), String::from("1989")),
+            Decade::Nineties => (String::from("1990"), String::from("1999")),
+            Decade::TwoThousands => (String::from("2000"), String::from("2009")),
+            Decade::TwentyTens => (String::from("2010"), String::from("2019")),
+            Decade::Recent => (String::from("2020"), String::from("2024")),
+        }
+    }
+}
+
+impl FilterItem for Decade {
+    fn description(&self) -> String {
+        match self{
+            Decade::Classic => String::from("Classic cinema in its black-and-white glory"),
+            _ => String::from("") 
+        }
+    }
+
+    fn display_name(&self) -> String {
+        match self{
+            Decade::Classic => String::from("Classics"),
+            Decade::Fifties => String::from("50s"),
+            Decade::Sixties => String::from("60s"),
+            Decade::Seventies => String::from("70s"),
+            Decade::Eighties => String::from("80s"),
+            Decade::Nineties => String::from("90s"),
+            Decade::TwoThousands => String::from("2000s"),
+            Decade::TwentyTens => String::from("2010s"),
+            Decade::Recent => String::from("Recent"),   
+        }
+    }
+
+    fn from_string(decade: String) -> Self {
+        match decade.as_str(){
+            "Classics" => Decade::Classic,
+            "50s" => Decade::Fifties,
+            "60s" => Decade::Sixties,
+            "70s" => Decade::Seventies,
+            "80s" => Decade::Eighties,
+            "90s" => Decade::Nineties,
+            "2000s" => Decade::TwoThousands,
+            "2010s" => Decade::TwentyTens,
+            "Recent" => Decade::Recent,
+            _ => Decade::Recent,
+        }
+    }
+
+    // Yeah I KNOW this is ugly. I'll figure it out LATER
+    // TODO: Fix this
+    fn get_list() -> Vec<Self> where Self: Sized {
+        vec![Decade::Classic, Decade::Fifties, Decade::Sixties, Decade::Seventies, Decade::Eighties, Decade::Nineties, Decade::TwoThousands, Decade::TwentyTens, Decade::Recent]
+    }
+}
+
 
 #[derive(Debug, Deserialize)]
 pub struct Movie {
@@ -24,7 +200,7 @@ pub struct SearchByTitleResponse {
     pub results: Vec<Movie>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct WatchProvider {
     //logo_path: String,
     pub provider_id: i32,
@@ -59,7 +235,7 @@ pub struct GetMoveDetailsResponse {
     genres: Vec<Genre>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Genre {
     pub id: i32,
     pub name: String,
@@ -102,6 +278,7 @@ impl Tmdb {
         Self { api_key, base_url }
     }
 
+    /* For building shared instance */
     pub fn shared_instance() -> Arc<Self> {
         Arc::new(Self::new())
     }
@@ -203,16 +380,28 @@ impl Tmdb {
         &self,
         genres: Vec<Genre>,
         watch_providers: Vec<WatchProvider>,
+        runtime: Runtime,
+        decade: Decade,
     ) -> Result<GetRecommendationsResponse, Box<dyn std::error::Error>> {
         let genre_ids: String = genres.iter().map(|g| g.id.to_string()).collect::<Vec<_>>().join(",");
 
         let provider_ids: String = watch_providers.iter().map(|p| p.provider_id.to_string()).collect::<Vec<_>>().join("|");
+
+        let start_date = decade.year_range().0;
+
+        let end_date = decade.year_range().1;
         
         let url = 
-            format!("{}/discover/movie?include_adult=false&include_video=false&language=en-US&page=1&sort_by=popularity.desc&watch_region=US&with_genres={}&with_watch_monetization_types=flatrate&with_watch_providers={}", 
+            format!("{}/discover/movie?include_adult=false&include_video=false&language=en-US&page=1&primary_release_date.gte={}-01-01&primary_release_date.lte={}-12-31&with_runtime.gte={}&with_runtime.lte={}&sort_by=popularity.desc&watch_region=US&with_genres={}&with_watch_monetization_types=flatrate&with_watch_providers={}", 
             self.base_url, 
+            start_date,
+            end_date,
+            runtime.runtime().0,
+            runtime.runtime().1,
             genre_ids, 
             provider_ids);
+
+        println!("{}", &url);
 
         let recommendation_response = self.make_tmdb_request(&url).await;
 

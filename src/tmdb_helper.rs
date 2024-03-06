@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_variables)]
 use futures::Future;
 use movie_recommendation::*;
+use std::cmp::Ordering;
 use std::sync::Arc;
 use std::{env, io};
 
@@ -10,9 +11,11 @@ pub async fn get_movie_recommendations(
     tmdb: Arc<Tmdb>,
     genres: Vec<Genre>,
     watch_providers: Vec<WatchProvider>,
+    runtime: Runtime,
+    decade: Decade,
 ) -> Result<Vec<MovieRecommendation>, Box<dyn std::error::Error>> {
     let recommendations = tmdb
-        .get_recommendations(genres, watch_providers)
+        .get_recommendations(genres, watch_providers, runtime, decade)
         .await
         .expect("Error fetching recommendations");
     let mut index = 0;
@@ -23,7 +26,7 @@ pub async fn get_movie_recommendations(
         if index > 10 {
             break;
         }
-        let temp_tmdb = tmdb.clone();
+        let temp_tmdb = Arc::clone(&tmdb);
         let handle = tokio::spawn(async move {
             let movie_id = movie.id.to_string();
             temp_tmdb
@@ -108,6 +111,61 @@ pub async fn get_genre_input(
         .into_iter()
         .filter(|g| chosen_genres.contains(&g.name.as_str()))
         .collect()
+}
+
+pub async fn get_runtime() -> Result<Runtime, Box<dyn std::error::Error>> {
+    println!("Choose a movie length: ");
+
+    for runtime in Runtime::get_list() {
+        println!("{} - {}", runtime.display_name(), runtime.description());
+    }
+
+    let mut cli_input = String::new();
+
+    io::stdin()
+        .read_line(&mut cli_input)
+        .expect("Failed to read line");
+
+    Ok(Runtime::from_string(cli_input.trim().to_string()))
+}
+
+pub async fn get_decades() -> Result<Decade, Box<dyn std::error::Error>> {
+    println!("Choose a few decades: ");
+
+    for decade in Decade::get_list() {
+        println!("{}", decade.display_name());
+    }
+
+    let mut cli_input = String::new();
+
+    io::stdin()
+        .read_line(&mut cli_input)
+        .expect("Failed to read line");
+
+    /*
+
+    //This code attempts to get a list of decades. This is tough with the TMDB, so for now will only support 1 decade choice
+
+    let decade_string = cli_input.split(",");
+
+    let mut chosen_decades = decade_string
+        .into_iter()
+        .map(|f| Decade::from_string(String::from(f)))
+        .collect::<Vec<Decade>>();
+
+    chosen_decades.sort_by(|a, b| {
+        if a.sort_order() > b.sort_order() {
+            Ordering::Less
+        } else if a.sort_order() == b.sort_order() {
+            Ordering::Equal
+        } else {
+            Ordering::Greater
+        }
+    });
+
+    */
+
+    Ok(Decade::from_string(cli_input.trim().to_string()))
 }
 
 pub async fn get_movie_from_title(tmdb: &Tmdb) -> Result<Movie, Box<dyn std::error::Error>> {
