@@ -1,8 +1,8 @@
 #![allow(dead_code, unused_variables)]
 use futures::Future;
 use movie_recommendation::*;
+use std::io;
 use std::sync::Arc;
-use std::{env, io};
 
 const NUM_RESULTS: u8 = 5;
 
@@ -12,7 +12,7 @@ pub async fn get_movie_recommendations(
     watch_providers: Vec<WatchProvider>,
     runtime: Runtime,
     decade: Decade,
-) -> Result<Vec<MovieRecommendation>, Box<dyn std::error::Error>> {
+) -> Result<Vec<AsyncRecommendation>, Box<dyn std::error::Error>> {
     let recommendations = tmdb
         .get_recommendations(genres, watch_providers, runtime, decade)
         .await
@@ -33,7 +33,46 @@ pub async fn get_movie_recommendations(
                 .await
                 .expect("Unable to call tmdb")
         });
-        movie_recommendations.push(MovieRecommendation {
+        movie_recommendations.push(AsyncRecommendation {
+            movie,
+            fut_prov: handle,
+        });
+        index += 1;
+    }
+
+    Ok(movie_recommendations)
+}
+
+pub async fn get_recommendations_from_criteria(
+    tmdb: Arc<Tmdb>,
+    criteria: RecommendationCriteria,
+) -> Result<Vec<AsyncRecommendation>, Box<dyn std::error::Error>> {
+    let recommendations = tmdb
+        .get_recommendations(
+            criteria.genres,
+            criteria.watch_providers,
+            criteria.runtime,
+            criteria.decade,
+        )
+        .await
+        .expect("Error fetching recommendations");
+    let mut index = 0;
+
+    let mut movie_recommendations = vec![];
+
+    for movie in recommendations.results {
+        if index > 10 {
+            break;
+        }
+        let temp_tmdb = Arc::clone(&tmdb);
+        let handle = tokio::spawn(async move {
+            let movie_id = movie.id.to_string();
+            temp_tmdb
+                .get_watch_providers_by_id(&movie_id)
+                .await
+                .expect("Unable to call tmdb")
+        });
+        movie_recommendations.push(AsyncRecommendation {
             movie,
             fut_prov: handle,
         });
@@ -167,43 +206,16 @@ pub async fn get_decades() -> Result<Decade, Box<dyn std::error::Error>> {
     Ok(Decade::from_string(cli_input.trim().to_string()))
 }
 
-pub async fn get_movie_from_title(tmdb: &Tmdb) -> Result<Movie, Box<dyn std::error::Error>> {
-    let args: Vec<String> = env::args().collect();
-
-    let movie_title = if args.len() < 2 {
-        String::from("Spider-Man Homecoming")
-    } else {
-        args[1].clone()
-    };
-
-    let mut search_result = tmdb
+pub async fn get_movies_from_title(
+    movie_title: String,
+    tmdb: Arc<Tmdb>,
+) -> Result<Vec<Movie>, Box<dyn std::error::Error>> {
+    let search_result = tmdb
         .search_by_title(&movie_title)
         .await
         .expect("Something went wrong - unable to find movie_id");
 
-    for (i, movie) in search_result.results.iter().enumerate() {
-        if i >= NUM_RESULTS.into() {
-            break;
-        }
-        println!("{}", i);
-        println!("Title: {}", movie.title);
-        println!("Id: {}", movie.id);
-        println!("Release date: {}", movie.release_date);
-        println!("Overview: {}", movie.overview);
-        println!("-----------------")
-    }
-
-    let mut cli_input = String::new();
-
-    println!("Choose number from results: ");
-
-    io::stdin()
-        .read_line(&mut cli_input)
-        .expect("Failed to read line");
-
-    let index: usize = cli_input.trim().parse().expect("Input not an integer");
-
-    Ok(search_result.results.remove(index))
+    Ok(search_result.results)
 }
 
 pub async fn get_providers_from_id(

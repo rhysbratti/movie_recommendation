@@ -4,10 +4,10 @@ use std::sync::Arc;
 use reqwest::{
     header::{ACCEPT, AUTHORIZATION, USER_AGENT}, Response
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // Messing with ideas around creating general 'Moods' to map to keywords and genres.
-pub enum Vibe {
+pub enum Mood {
     FamilyNight,
     Cinematic,
     Chill,
@@ -24,9 +24,18 @@ pub enum Vibe {
     Dramatic,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RecommendationCriteria {
+    pub genres: Vec<Genre>,
+    pub watch_providers: Vec<WatchProvider>,
+    pub runtime: Runtime,
+    pub decade: Decade,
+}
+
 /*
     Runtime options
  */
+#[derive(Debug, Deserialize)]
 pub enum Runtime {
     Quick,
     Average,
@@ -35,8 +44,84 @@ pub enum Runtime {
 }
 
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RuntimeInfo {
+    name: String,
+    description: String,
+}
+impl Runtime {
+    pub fn info(&self) -> RuntimeInfo {
+        match self {
+            Runtime::Quick => RuntimeInfo {
+                name: String::from("Quick"),
+                description: String::from("You're not looking for a commitment, but still want something awesome"),
+            },
+            Runtime::Average => RuntimeInfo {
+                name: String::from("Average"),
+                description: String::from("You've got some time, lets make it count"),
+            },
+            Runtime::MovieNight => RuntimeInfo {
+                name: String::from("Movie Night"),
+                description: String::from("Grab your popcorn, lets find a movie with that 'wow' factor"),
+            },
+            Runtime::MartinScorsese => RuntimeInfo {
+                name: String::from("Martin Scorsese"),
+                description: String::from("You refer to movies as 'films' and have a lot of time on your hands"),
+            },
+        }
+    }
+
+    pub fn runtime(&self) -> (i32, i32) {
+        match self {
+            Runtime::Quick => (60, 90),
+            Runtime::Average => (90,120),
+            Runtime::MovieNight => (120, 150),
+            Runtime::MartinScorsese => (150, 500),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DecadeInfo {
+    name: String,
+}
+
+impl Decade {
+    pub fn info(&self) -> DecadeInfo {
+        match self {
+            Decade::Classic => DecadeInfo {
+                name: String::from("Classics")
+            },
+            Decade::Fifties => DecadeInfo {
+                name: String::from("50s")
+            },
+            Decade::Sixties => DecadeInfo {
+                name: String::from("60s")
+            },
+            Decade::Seventies => DecadeInfo {
+                name: String::from("70s")
+            },
+            Decade::Eighties => DecadeInfo {
+                name: String::from("80s")
+            },
+            Decade::Nineties => DecadeInfo {
+                name: String::from("90s")
+            },
+            Decade::TwoThousands => DecadeInfo {
+                name: String::from("2000s")
+            },
+            Decade::TwentyTens => DecadeInfo {
+                name: String::from("2010s")
+            },
+            Decade::Recent => DecadeInfo {
+                name: String::from("Recent")
+            }, 
+        }
+    }
+}
+
 /*
-    Traits for filtering enums. Currently have Runtime and Decade
+    Traits for filtering enums. Currently, have Runtime and Decade
 */
 pub trait FilterItem {
     // Gets description for UI
@@ -48,7 +133,7 @@ pub trait FilterItem {
     // Maps a string to an enum
     fn from_string(str: String) -> Self;
 
-    // Returns list of all enums possibilities. Currently a bit clunky but will likely change in the future
+    // Returns list of all enums possibilities. Currently, a bit clunky but will likely change in the future
     fn get_list() -> Vec<Self> where Self: Sized;
 }
 
@@ -91,22 +176,10 @@ impl FilterItem for Runtime {
     }
 }
 
-
-impl Runtime {
-    // Maps a runtime enum to a runtime range tuple. This is passed in to the /discover endpoint to filter results by run time
-    pub fn runtime(&self) -> (i32, i32) {
-        match self {
-            Runtime::Quick => (60, 90),
-            Runtime::Average => (90,120),
-            Runtime::MovieNight => (120, 150),
-            Runtime::MartinScorsese => (150, 500),
-        }
-    }
-}
-
 /*
     Decade enum for filtering by Decade
 */
+#[derive(Debug, Deserialize)]
 pub enum Decade {
     Classic,
     Fifties,
@@ -182,12 +255,12 @@ impl FilterItem for Decade {
 }
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Movie {
     pub id: i64,
     pub overview: String,
     //popularity: f64,
-    //poster_path: Option<String>,
+    pub poster_path: Option<String>,
     pub release_date: String,
     pub title: String,
     //vote_average: f64,
@@ -199,7 +272,7 @@ pub struct SearchByTitleResponse {
     pub results: Vec<Movie>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct WatchProvider {
     //logo_path: String,
     pub provider_id: i32,
@@ -234,7 +307,7 @@ pub struct GetMoveDetailsResponse {
     genres: Vec<Genre>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct Genre {
     pub id: i32,
     pub name: String,
@@ -255,10 +328,16 @@ pub struct GetRecommendationsResponse {
     pub results: Vec<Movie>,
 }
 
-pub struct MovieRecommendation {
+pub struct AsyncRecommendation {
     pub movie: Movie,
     //pub providers: Vec<WatchProvider>,
     pub fut_prov: tokio::task::JoinHandle<GetWatchProvidersResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MovieRecommendation {
+    pub movie: Movie,
+    pub providers: Vec<WatchProvider>,
 }
 
 /* Struct for interacting with TMDB API */
@@ -272,7 +351,7 @@ pub struct Tmdb {
 impl Tmdb {
     /* Constructor for building Tmdb object */
     pub fn new() -> Self {
-        let api_key: String = fs::read_to_string("api.key").expect("Unable to read API Key!");
+        let api_key: String = fs::read_to_string("api.key").expect("Unable to read API Key!").trim().to_string();
         let base_url: String = String::from("https://api.themoviedb.org/3/");
         Self { api_key, base_url }
     }
