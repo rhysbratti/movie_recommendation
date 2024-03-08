@@ -121,62 +121,6 @@ impl Decade {
 }
 
 /*
-    Traits for filtering enums. Currently, have Runtime and Decade
-*/
-pub trait FilterItem {
-    // Gets description for UI
-    fn description(&self) -> String;
-
-    // Gets UI display name
-    fn display_name(&self) -> String;
-
-    // Maps a string to an enum
-    fn from_string(str: String) -> Self;
-
-    // Returns list of all enums possibilities. Currently, a bit clunky but will likely change in the future
-    fn get_list() -> Vec<Self> where Self: Sized;
-}
-
-/*
-    FilterItem for Runtime
-*/
-impl FilterItem for Runtime {
-    fn description(&self) -> String {
-        match self {
-            Runtime::Quick => String::from("Bite size movie night, not looking for a commitment."),
-            Runtime::Average => String::from("You got some time, lets make it count"),
-            Runtime::MovieNight => String::from("Grab your popcorn, lets find a movie with that 'wow' factor"),
-            Runtime::MartinScorsese => String::from("You refer to movies as 'films' and have a lot of time on your hands.")
-        }
-    }
-
-    fn display_name(&self) -> String {
-        match self {
-            Runtime::Quick => String::from("Quick"),
-            Runtime::Average => String::from("Average"),
-            Runtime::MovieNight => String::from("Movie Night"),
-            Runtime::MartinScorsese => String::from("Martin Scorsese"),
-        }
-    }
-
-    fn from_string(runtime: String) -> Self {
-        match runtime.as_str(){
-            "Quick" => Runtime::Quick,
-            "Average" => Runtime::Average,
-            "Movie Night" => Runtime::MovieNight,
-            "Martin Scorsese" => Runtime::MartinScorsese,
-            _ => Runtime::Average,
-        }
-    }
-
-    // Yeah I know this probably isn't the best way to do this but I'll figure it out later
-    // TODO: figure this out later
-    fn get_list() -> Vec<Self> where Self: Sized {
-        vec![Runtime::Quick, Runtime::Average, Runtime::MovieNight, Runtime::MartinScorsese]
-    }
-}
-
-/*
     Decade enum for filtering by Decade
 */
 #[derive(Debug, Deserialize)]
@@ -210,50 +154,6 @@ impl Decade {
     }
 }
 
-impl FilterItem for Decade {
-    fn description(&self) -> String {
-        match self{
-            Decade::Classic => String::from("Classic cinema in its black-and-white glory"),
-            _ => String::from("") 
-        }
-    }
-
-    fn display_name(&self) -> String {
-        match self{
-            Decade::Classic => String::from("Classics"),
-            Decade::Fifties => String::from("50s"),
-            Decade::Sixties => String::from("60s"),
-            Decade::Seventies => String::from("70s"),
-            Decade::Eighties => String::from("80s"),
-            Decade::Nineties => String::from("90s"),
-            Decade::TwoThousands => String::from("2000s"),
-            Decade::TwentyTens => String::from("2010s"),
-            Decade::Recent => String::from("Recent"),   
-        }
-    }
-
-    fn from_string(decade: String) -> Self {
-        match decade.as_str(){
-            "Classics" => Decade::Classic,
-            "50s" => Decade::Fifties,
-            "60s" => Decade::Sixties,
-            "70s" => Decade::Seventies,
-            "80s" => Decade::Eighties,
-            "90s" => Decade::Nineties,
-            "2000s" => Decade::TwoThousands,
-            "2010s" => Decade::TwentyTens,
-            "Recent" => Decade::Recent,
-            _ => Decade::Recent,
-        }
-    }
-
-    // Yeah I KNOW this is ugly. I'll figure it out LATER
-    // TODO: Fix this
-    fn get_list() -> Vec<Self> where Self: Sized {
-        vec![Decade::Classic, Decade::Fifties, Decade::Sixties, Decade::Seventies, Decade::Eighties, Decade::Nineties, Decade::TwoThousands, Decade::TwentyTens, Decade::Recent]
-    }
-}
-
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Movie {
@@ -274,7 +174,7 @@ pub struct SearchByTitleResponse {
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct WatchProvider {
-    //logo_path: String,
+    pub logo_path: String,
     pub provider_id: i32,
     pub provider_name: String,
 }

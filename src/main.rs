@@ -6,10 +6,7 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder,
 };
 use movie_recommendation::*;
-use std::sync::Arc;
-
 mod tmdb_helper;
-mod workflow;
 // TODO: Data structure for mapping general "Vibes" to genres and keywords
 
 #[tokio::main]
@@ -66,6 +63,8 @@ async fn get_decades() -> impl Responder {
 
 #[get("/simplewatchproviders")]
 async fn get_simple_watch_providers() -> impl Responder {
+    let tmdb = Tmdb::shared_instance();
+    let providers = tmdb.get_providers_list();
     let supported_providers = vec![
         "Netflix",
         "Hulu",
@@ -78,7 +77,20 @@ async fn get_simple_watch_providers() -> impl Responder {
         "Crunchyroll",
         "Paramount Plus",
     ];
-    web::Json(supported_providers)
+
+    let mut provider_output: Vec<WatchProvider> = providers
+        .await
+        .expect("Uh oh")
+        .results
+        .into_iter()
+        .filter(|p| supported_providers.contains(&p.provider_name.as_str()))
+        .collect();
+
+    for provider in &mut provider_output {
+        provider.logo_path = str::replace(provider.logo_path.as_str(), "jpg", "svg");
+    }
+
+    web::Json(provider_output)
 }
 
 #[get("/movies/{movie_title}")]
@@ -138,49 +150,4 @@ async fn get_genres() -> impl Responder {
     let tmdb = Tmdb::shared_instance();
 
     HttpResponse::Ok().json(tmdb.get_genre_list().await.expect("Uh oh").genres)
-}
-
-async fn recommendation_flow(tmdb: Arc<Tmdb>) -> Result<(), Box<dyn std::error::Error>> {
-    let providers = tmdb.get_providers_list();
-    let genres = tmdb.get_genre_list();
-
-    let filtered_providers = tmdb_helper::get_provider_input(providers).await;
-
-    let runtime = tmdb_helper::get_runtime().await.expect("Oh oh");
-
-    let decade = tmdb_helper::get_decades().await.expect("Uh oh");
-
-    let filtered_genres = tmdb_helper::get_genre_input(genres).await;
-
-    let movie_recommendations = tmdb_helper::get_movie_recommendations(
-        tmdb,
-        filtered_genres,
-        filtered_providers,
-        runtime,
-        decade,
-    )
-    .await
-    .expect("Error getting recommendations");
-
-    println!("Getting movie recommendations...");
-
-    for movie_rec in movie_recommendations {
-        println!("|{}", movie_rec.movie.title);
-        println!("Desc: {}", movie_rec.movie.overview);
-        println!("Date: {}", movie_rec.movie.release_date);
-        println!("Providers: ");
-        let providers: Vec<WatchProvider> = movie_rec
-            .fut_prov
-            .await
-            .expect("Uh oh ")
-            .results
-            .us
-            .flatrate;
-        for provider in providers {
-            println!("{}", provider.provider_name);
-        }
-        println!("-------------");
-    }
-
-    Ok(())
 }
