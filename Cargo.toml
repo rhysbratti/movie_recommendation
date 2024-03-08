@@ -14,3 +14,6 @@ futures = "0.3.30"
 chrono = "0.4.34"
 actix-web = "4.5.1"
 actix-cors = "0.7.0"
+redis = "0.24.0"
+actix-session = { version = "0.9.0", features = ["cookie-session"] }
+uuid = { version = "1.7.0", features = ["v4"] }

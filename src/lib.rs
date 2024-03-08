@@ -35,7 +35,7 @@ pub struct RecommendationCriteria {
 /*
     Runtime options
  */
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum Runtime {
     Quick,
     Average,

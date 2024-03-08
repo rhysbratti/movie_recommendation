@@ -6,6 +6,7 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder,
 };
 use movie_recommendation::*;
+mod redis;
 mod tmdb_helper;
 // TODO: Data structure for mapping general "Vibes" to genres and keywords
 
@@ -26,8 +27,11 @@ async fn main() -> std::io::Result<()> {
             .service(post_runtime)
             .service(get_recommendations)
             .service(get_genres)
+            .service(start_session)
+            .service(get_session)
+            .service(post_providers)
     })
-    .bind("127.0.0.1:8000")?
+    .bind("127.0.0.1:8080")?
     .run()
     .await
 }
@@ -111,15 +115,45 @@ async fn post_movies(movies: web::Json<Vec<Movie>>) -> impl Responder {
     HttpResponse::Ok().body("Got the movies")
 }
 
-#[post("/runtime")]
-async fn post_runtime(runtime: web::Json<Runtime>) -> impl Responder {
+#[post("/watch_providers/{session_id}")]
+async fn post_providers(
+    session_id: web::Path<String>,
+    providers: web::Json<Vec<WatchProvider>>,
+) -> impl Responder {
+    let id = session_id.clone();
+    let json_string =
+        serde_json::to_string(&providers.into_inner()).expect("Unable to parse providers");
+
+    redis::to_cache(
+        &session_id.into_inner(),
+        String::from("providers"),
+        json_string,
+    )
+    .await;
+
+    let response = format!("Posted providers for {}", id);
+
+    println!("{}", &response);
+
+    HttpResponse::Ok().body(response)
+}
+
+#[post("/runtime/{session_id}")]
+async fn post_runtime(
+    session_id: web::Path<String>,
+    runtime: web::Json<Runtime>,
+) -> impl Responder {
     println!("Received a runtime: {:#?}", runtime);
 
-    println!(
-        "Runtime info: {} - {}",
-        runtime.runtime().0,
-        runtime.runtime().1
-    );
+    let json_string =
+        serde_json::to_string(&runtime.into_inner()).expect("Unable to parse runtime");
+
+    redis::to_cache(
+        &session_id.into_inner(),
+        String::from("runtime"),
+        json_string,
+    )
+    .await;
 
     HttpResponse::Ok().body("Got it")
 }
@@ -150,4 +184,19 @@ async fn get_genres() -> impl Responder {
     let tmdb = Tmdb::shared_instance();
 
     HttpResponse::Ok().json(tmdb.get_genre_list().await.expect("Uh oh").genres)
+}
+
+#[get{"/get_session/{session_id}"}]
+async fn get_session(session_id: web::Path<String>) -> impl Responder {
+    HttpResponse::Ok().body(
+        redis::get_session(session_id.into_inner())
+            .await
+            .to_string(),
+    )
+}
+
+#[get{"/start_session"}]
+async fn start_session() -> impl Responder {
+    println!("Got request to start session");
+    HttpResponse::Ok().body(redis::start_session().await)
 }
