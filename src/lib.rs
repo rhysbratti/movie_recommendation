@@ -45,6 +45,11 @@ pub enum Runtime {
 
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct RuntimeResponse {
+    runtime: Runtime,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RuntimeInfo {
     name: String,
     description: String,

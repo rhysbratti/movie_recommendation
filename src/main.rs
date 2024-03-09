@@ -141,8 +141,9 @@ async fn post_providers(
 #[post("/runtime/{session_id}")]
 async fn post_runtime(
     session_id: web::Path<String>,
-    runtime: web::Json<Runtime>,
+    runtime: web::Json<RuntimeResponse>,
 ) -> impl Responder {
+    let id = session_id.clone();
     println!("Received a runtime: {:#?}", runtime);
 
     let json_string =
@@ -155,7 +156,9 @@ async fn post_runtime(
     )
     .await;
 
-    HttpResponse::Ok().body("Got it")
+    let response = format!("Posted runtime for {}", &id);
+
+    HttpResponse::Ok().body(response)
 }
 
 #[post("/recommendations")]
