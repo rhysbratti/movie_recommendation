@@ -1,3 +1,4 @@
+use movie_recommendation::TestRecommCritieria;
 use redis::{Commands, Connection};
 use uuid::Uuid;
 
@@ -19,6 +20,16 @@ pub async fn from_cache(session_id: &String, json_id: String) -> redis::RedisRes
     Ok(result)
 }
 
+pub async fn criteria_from_cache(session_id: &String) {}
+
+pub async fn criteria_to_cache(session_id: &String, criteria: TestRecommCritieria) {
+    let mut con = get_connection();
+
+    let json_string = serde_json::to_string(&criteria).expect("Unable to parse criteria");
+
+    let _: () = con.set(session_id, json_string).unwrap();
+}
+
 pub async fn start_session() -> String {
     let mut con = get_connection();
 
@@ -27,6 +38,25 @@ pub async fn start_session() -> String {
     let session_key = format!("session:{}", session_id);
 
     let _: () = con.set(&session_id, true).unwrap();
+
+    session_id
+}
+
+pub async fn start_recommendation_session() -> String {
+    let mut con = get_connection();
+
+    let session_id = Uuid::new_v4().to_string();
+
+    let criteria = TestRecommCritieria {
+        genres: None,
+        watch_providers: None,
+        runtime: None,
+        decade: None,
+    };
+
+    let json_string = serde_json::to_string(&criteria).expect("Unable to parse criteria");
+
+    let _: () = con.set(&session_id, json_string).unwrap();
 
     session_id
 }

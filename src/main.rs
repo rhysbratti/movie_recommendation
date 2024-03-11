@@ -25,11 +25,14 @@ async fn main() -> std::io::Result<()> {
             .service(get_movies_by_title)
             .service(post_movies)
             .service(post_runtime)
-            .service(get_recommendations)
+            .service(post_recommendations)
             .service(get_genres)
             .service(start_session)
             .service(get_session)
             .service(post_providers)
+            .service(post_genres)
+            .service(post_decades)
+            .service(get_recommendations)
     })
     .bind("127.0.0.1:8080")?
     .run()
@@ -108,6 +111,26 @@ async fn get_movies_by_title(movie_title: web::Path<String>) -> impl Responder {
     HttpResponse::Ok().json(movies)
 }
 
+#[post("/decades/{session_id}")]
+async fn post_decades(
+    session_id: web::Path<String>,
+    decade: web::Json<DecadeResponse>,
+) -> impl Responder {
+    let id = session_id.clone();
+
+    let decade = Decade::from_string(&decade.decade);
+
+    let json_string = serde_json::to_string(&decade).expect("Unable to parse decade");
+
+    redis::to_cache(&session_id, String::from("decade"), json_string).await;
+
+    let response = format!("Posted decade for {}", id);
+
+    println!("{}", &response);
+
+    HttpResponse::Ok().body(response)
+}
+
 #[post("/movies")]
 async fn post_movies(movies: web::Json<Vec<Movie>>) -> impl Responder {
     println!("I got: {:#?}", movies);
@@ -138,6 +161,24 @@ async fn post_providers(
     HttpResponse::Ok().body(response)
 }
 
+#[post("/genres/{session_id}")]
+async fn post_genres(
+    session_id: web::Path<String>,
+    genres: web::Json<Vec<Genre>>,
+) -> impl Responder {
+    let id = session_id.clone();
+
+    let json_string = serde_json::to_string(&genres.into_inner()).expect("Unable to parse genres");
+
+    redis::to_cache(&session_id, String::from("genres"), json_string).await;
+
+    let response = format!("Posted genres for{}", id);
+
+    println!("{}", &response);
+
+    HttpResponse::Ok().body(response)
+}
+
 #[post("/runtime/{session_id}")]
 async fn post_runtime(
     session_id: web::Path<String>,
@@ -161,8 +202,29 @@ async fn post_runtime(
     HttpResponse::Ok().body(response)
 }
 
+#[get("/recommend/{session_id}")]
+async fn get_recommendations(session_id: web::Path<String>) -> impl Responder {
+    let tmdb = Tmdb::shared_instance();
+
+    let recs = tmdb_helper::get_recommendations_for_session(tmdb, session_id.into_inner())
+        .await
+        .expect("Error getting recommendations");
+
+    let mut movie_recommendations: Vec<MovieRecommendation> = vec![];
+
+    for rec in recs {
+        let providers: Vec<WatchProvider> = rec.fut_prov.await.expect("Uh oh").results.us.flatrate;
+        movie_recommendations.push(MovieRecommendation {
+            movie: rec.movie,
+            providers,
+        })
+    }
+
+    HttpResponse::Ok().json(movie_recommendations)
+}
+
 #[post("/recommendations")]
-async fn get_recommendations(criteria: web::Json<RecommendationCriteria>) -> impl Responder {
+async fn post_recommendations(criteria: web::Json<RecommendationCriteria>) -> impl Responder {
     let tmdb = Tmdb::shared_instance();
 
     let recs = tmdb_helper::get_recommendations_from_criteria(tmdb, criteria.into_inner())

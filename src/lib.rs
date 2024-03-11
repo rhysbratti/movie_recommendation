@@ -32,6 +32,14 @@ pub struct RecommendationCriteria {
     pub decade: Decade,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TestRecommCritieria {
+    pub genres: Option<Vec<Genre>>,
+    pub watch_providers: Option<Vec<WatchProvider>>,
+    pub runtime: Option<Runtime>,
+    pub decade: Option<Decade>,
+}
+
 /*
     Runtime options
  */
@@ -46,7 +54,7 @@ pub enum Runtime {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RuntimeResponse {
-    runtime: Runtime,
+    pub runtime: Runtime,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -91,6 +99,11 @@ pub struct DecadeInfo {
     name: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DecadeResponse {
+    pub decade: String,
+}
+
 impl Decade {
     pub fn info(&self) -> DecadeInfo {
         match self {
@@ -123,12 +136,27 @@ impl Decade {
             }, 
         }
     }
+
+    pub fn from_string(decade_string: &str) -> Self{
+        match decade_string {
+            "Classics" => Decade::Classic,
+            "50s" => Decade::Fifties,
+            "60s" => Decade::Sixties,
+            "70s" => Decade::Seventies,
+            "80s" => Decade::Eighties,
+            "90s" => Decade::Nineties,
+            "2000s" => Decade::TwoThousands,
+            "2010s" => Decade::TwentyTens,
+            "Recent" => Decade::Recent,
+            _ => Decade::Recent,
+        }
+    }
 }
 
 /*
     Decade enum for filtering by Decade
 */
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum Decade {
     Classic,
     Fifties,
