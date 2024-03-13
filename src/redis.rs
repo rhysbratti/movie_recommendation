@@ -1,3 +1,4 @@
+use actix_web::{test::TestRequest, web::get};
 use movie_recommendation::TestRecommCritieria;
 use redis::{Commands, Connection};
 use uuid::Uuid;
@@ -20,7 +21,18 @@ pub async fn from_cache(session_id: &String, json_id: String) -> redis::RedisRes
     Ok(result)
 }
 
-pub async fn criteria_from_cache(session_id: &String) {}
+pub async fn criteria_from_cache(
+    session_id: &String,
+) -> Result<TestRecommCritieria, Box<dyn std::error::Error>> {
+    let mut con = get_connection();
+
+    let redis_result: String = con.get(session_id).expect("Error getting redis stuff");
+
+    let criteria: TestRecommCritieria =
+        serde_json::from_str(&redis_result).expect("Error parsing result");
+
+    Ok(criteria)
+}
 
 pub async fn criteria_to_cache(session_id: &String, criteria: TestRecommCritieria) {
     let mut con = get_connection();

@@ -120,9 +120,12 @@ async fn post_decades(
 
     let decade = Decade::from_string(&decade.decade);
 
-    let json_string = serde_json::to_string(&decade).expect("Unable to parse decade");
+    let mut criteria = redis::criteria_from_cache(&session_id)
+        .await
+        .expect("Uh oh");
+    criteria.decade = Some(decade);
 
-    redis::to_cache(&session_id, String::from("decade"), json_string).await;
+    redis::criteria_to_cache(&session_id, criteria).await;
 
     let response = format!("Posted decade for {}", id);
 
@@ -144,15 +147,14 @@ async fn post_providers(
     providers: web::Json<Vec<WatchProvider>>,
 ) -> impl Responder {
     let id = session_id.clone();
-    let json_string =
-        serde_json::to_string(&providers.into_inner()).expect("Unable to parse providers");
 
-    redis::to_cache(
-        &session_id.into_inner(),
-        String::from("providers"),
-        json_string,
-    )
-    .await;
+    let mut criteria = redis::criteria_from_cache(&session_id)
+        .await
+        .expect("Uh oh");
+
+    criteria.watch_providers = Some(providers.into_inner());
+
+    redis::criteria_to_cache(&session_id, criteria).await;
 
     let response = format!("Posted providers for {}", id);
 
@@ -168,9 +170,13 @@ async fn post_genres(
 ) -> impl Responder {
     let id = session_id.clone();
 
-    let json_string = serde_json::to_string(&genres.into_inner()).expect("Unable to parse genres");
+    let mut criteria = redis::criteria_from_cache(&session_id)
+        .await
+        .expect("Uh oh");
 
-    redis::to_cache(&session_id, String::from("genres"), json_string).await;
+    criteria.genres = Some(genres.into_inner());
+
+    redis::criteria_to_cache(&session_id, criteria).await;
 
     let response = format!("Posted genres for{}", id);
 
@@ -187,15 +193,13 @@ async fn post_runtime(
     let id = session_id.clone();
     println!("Received a runtime: {:#?}", runtime);
 
-    let json_string =
-        serde_json::to_string(&runtime.into_inner()).expect("Unable to parse runtime");
+    let mut criteria = redis::criteria_from_cache(&session_id)
+        .await
+        .expect("Uh oh");
 
-    redis::to_cache(
-        &session_id.into_inner(),
-        String::from("runtime"),
-        json_string,
-    )
-    .await;
+    criteria.runtime = Some(runtime.into_inner().runtime);
+
+    redis::criteria_to_cache(&session_id, criteria).await;
 
     let response = format!("Posted runtime for {}", &id);
 
@@ -263,5 +267,5 @@ async fn get_session(session_id: web::Path<String>) -> impl Responder {
 #[get{"/start_session"}]
 async fn start_session() -> impl Responder {
     println!("Got request to start session");
-    HttpResponse::Ok().body(redis::start_session().await)
+    HttpResponse::Ok().body(redis::start_recommendation_session().await)
 }

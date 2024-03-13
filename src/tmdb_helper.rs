@@ -86,36 +86,17 @@ pub async fn get_recommendations_for_session(
     tmdb: Arc<Tmdb>,
     session_id: String,
 ) -> Result<Vec<AsyncRecommendation>, Box<dyn std::error::Error>> {
-    let genres: Vec<Genre> = serde_json::from_str(
-        &redis::from_cache(&session_id, String::from("genres"))
-            .await
-            .expect("Error retrieving genres"),
-    )
-    .expect("Error getting genres");
-
-    let watch_providers: Vec<WatchProvider> = serde_json::from_str(
-        &redis::from_cache(&session_id, String::from("providers"))
-            .await
-            .expect("Error retrieving providers"),
-    )
-    .expect("Error parsing JSON");
-
-    let runtime: RuntimeResponse = serde_json::from_str(
-        &redis::from_cache(&session_id, String::from("runtime"))
-            .await
-            .expect("Error retrieving Runtime"),
-    )
-    .expect("Error parsing JSON");
-
-    let decade: Decade = serde_json::from_str(
-        &redis::from_cache(&session_id, String::from("decade"))
-            .await
-            .expect("Error retrieving Runtime"),
-    )
-    .expect("Error parsing JSON");
+    let criteria = redis::criteria_from_cache(&session_id)
+        .await
+        .expect("Uh oh");
 
     let recommendations = tmdb
-        .get_recommendations(genres, watch_providers, runtime.runtime, decade)
+        .get_recommendations(
+            criteria.genres.expect("No genres for ID"),
+            criteria.watch_providers.expect("No watch providers for ID"),
+            criteria.runtime.expect("No runtime for ID"),
+            criteria.decade.expect("No decade for ID"),
+        )
         .await
         .expect("Error fetching recommendations");
     let mut index = 0;
