@@ -34,7 +34,7 @@ async fn main() -> std::io::Result<()> {
             .service(post_decades)
             .service(get_recommendations)
     })
-    .bind("127.0.0.1:8080")?
+    .bind("127.0.0.1:8585")?
     .run()
     .await
 }
