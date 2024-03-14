@@ -15,7 +15,7 @@ async fn main() -> std::io::Result<()> {
     let tmdb = Tmdb::shared_instance();
 
     HttpServer::new(|| {
-        let cors = Cors::default().allowed_origin("http://localhost:5173");
+        let cors = Cors::permissive();
 
         App::new()
             .wrap(cors)

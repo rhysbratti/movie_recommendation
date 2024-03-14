@@ -1,4 +1,3 @@
-use actix_web::{test::TestRequest, web::get};
 use movie_recommendation::TestRecommCritieria;
 use redis::{Commands, Connection};
 use uuid::Uuid;
