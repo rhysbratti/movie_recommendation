@@ -12,6 +12,8 @@ mod tmdb_helper;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    env_logger::init();
+    log::info!("starting server on port 8585");
     let tmdb = Tmdb::shared_instance();
 
     HttpServer::new(|| {
@@ -34,7 +36,7 @@ async fn main() -> std::io::Result<()> {
             .service(post_decades)
             .service(get_recommendations)
     })
-    .bind("127.0.0.1:8585")?
+    .bind("0.0.0.0:8585")?
     .run()
     .await
 }
@@ -267,5 +269,7 @@ async fn get_session(session_id: web::Path<String>) -> impl Responder {
 #[get{"/start_session"}]
 async fn start_session() -> impl Responder {
     println!("Got request to start session");
+    log::info!("Starting session");
+
     HttpResponse::Ok().body(redis::start_recommendation_session().await)
 }

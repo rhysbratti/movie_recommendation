@@ -2,7 +2,7 @@ use movie_recommendation::TestRecommCritieria;
 use redis::{Commands, Connection};
 use uuid::Uuid;
 
-const CONNECTION_STRING: &str = "redis://127.0.0.1:6379";
+const CONNECTION_STRING: &str = "redis://redis-server:6379";
 
 pub async fn to_cache(session_id: &String, json_id: String, json_string: String) {
     let mut con = get_connection();

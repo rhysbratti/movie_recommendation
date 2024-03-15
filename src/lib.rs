@@ -284,7 +284,7 @@ pub struct Tmdb {
 impl Tmdb {
     /* Constructor for building Tmdb object */
     pub fn new() -> Self {
-        let api_key: String = fs::read_to_string("/configs/api.key").expect("Unable to read API Key!").trim().to_string();
+        let api_key: String = fs::read_to_string("config/api.key").expect("Unable to read API Key!").trim().to_string();
         let base_url: String = String::from("https://api.themoviedb.org/3/");
         Self { api_key, base_url }
     }
