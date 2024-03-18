@@ -1,4 +1,4 @@
-use movie_recommendation::RecommendationCriteria;
+use movie_recommendation::*;
 use redis::{Commands, Connection};
 use uuid::Uuid;
 
@@ -73,8 +73,69 @@ pub async fn end_session(session_id: String) {
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use super::*;
+    use redis::ConnectionLike;
 
     #[tokio::test]
-    async fn test_session() {}
+    async fn test_connection() {
+        let mut con = get_connection().unwrap();
+        assert!(con.check_connection());
+    }
+
+    #[tokio::test]
+    async fn test_criteria_roundtrip() {
+        let session_id = start_recommendation_session().await;
+
+        assert!(session_id.is_ok());
+
+        let session_id = session_id.unwrap();
+
+        let criteria_start = RecommendationCriteria {
+            genres: Some(vec![Genre {
+                id: 1,
+                name: "foo".to_string(),
+            }]),
+            watch_providers: Some(vec![WatchProvider {
+                logo_path: "/".to_string(),
+                provider_id: 1,
+                provider_name: "bar".to_string(),
+            }]),
+            runtime: Some(Runtime::MovieNight),
+            decade: Some(Decade::Eighties),
+        };
+
+        let to_cache_result = criteria_to_cache(&session_id, criteria_start.clone()).await;
+
+        assert!(to_cache_result.is_ok());
+
+        let from_cache_result = criteria_from_cache(&session_id).await;
+
+        assert!(from_cache_result.is_ok());
+
+        assert_eq!(from_cache_result.unwrap(), criteria_start);
+
+        end_session(session_id).await;
+    }
+
+    #[tokio::test]
+    async fn test_start_session() {
+        let empty_criteria_string =
+            "{\"genres\":null,\"watch_providers\":null,\"runtime\":null,\"decade\":null}";
+        let response = start_recommendation_session().await;
+
+        assert!(response.is_ok());
+
+        let session_id = response.unwrap();
+
+        assert!(!session_id.is_empty());
+
+        let mut con = get_connection().unwrap();
+        assert!(con.check_connection());
+
+        let empty_criteria: String = con.get(session_id).expect("Error fetching from redis");
+
+        assert_eq!(empty_criteria, empty_criteria_string);
+    }
 }

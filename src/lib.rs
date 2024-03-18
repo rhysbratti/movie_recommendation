@@ -10,7 +10,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RecommendationCriteria {
     pub genres: Option<Vec<Genre>>,
     pub watch_providers: Option<Vec<WatchProvider>>,
@@ -21,7 +21,7 @@ pub struct RecommendationCriteria {
 /*
    Runtime options
 */
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub enum Runtime {
     Quick,
     Average,
@@ -149,7 +149,7 @@ impl Decade {
 /*
     Decade enum for filtering by Decade
 */
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub enum Decade {
     Classic,
     Fifties,
@@ -179,7 +179,7 @@ impl Decade {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Movie {
     pub id: i64,
     pub overview: String,
@@ -196,7 +196,7 @@ pub struct SearchByTitleResponse {
     pub results: Vec<Movie>,
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Debug, Deserialize, Clone, Serialize, PartialEq, Eq)]
 pub struct WatchProvider {
     pub logo_path: String,
     pub provider_id: i32,
@@ -226,7 +226,7 @@ pub struct GetWatchProvidersResponse {
     pub results: WatchProviderRegions,
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Debug, Deserialize, Clone, Serialize, PartialEq, Eq)]
 pub struct Genre {
     pub id: i32,
     pub name: String,
@@ -476,9 +476,7 @@ mod tests {
 
         let response = response.unwrap().results.us.flatrate[0].clone();
 
-        assert!(response.logo_path == watch_provider.logo_path);
-        assert!(response.provider_id == watch_provider.provider_id);
-        assert!(response.provider_name == watch_provider.provider_name);
+        assert_eq!(response, watch_provider);
     }
 
     #[tokio::test]
@@ -540,10 +538,7 @@ mod tests {
 
         assert!(!response.genres.is_empty());
 
-        assert!(response
-            .genres
-            .iter()
-            .any(|g| g.id == test_genre.id && g.name == test_genre.name));
+        assert!(response.genres.iter().any(|g| g == &test_genre));
     }
 
     #[tokio::test]
@@ -608,12 +603,7 @@ mod tests {
 
         assert!(!response.results.is_empty());
 
-        assert!(response
-            .results
-            .iter()
-            .any(|p| p.logo_path == test_provider.logo_path
-                && p.provider_name == test_provider.provider_name
-                && p.provider_id == test_provider.provider_id));
+        assert!(response.results.iter().any(|p| p == &test_provider));
     }
 
     #[tokio::test]
@@ -693,9 +683,6 @@ mod tests {
 
         assert!(!response.results.is_empty());
 
-        assert!(response
-            .results
-            .iter()
-            .any(|m| m.id == movie.id && m.title == movie.title));
+        assert!(response.results.iter().any(|m| m == &movie));
     }
 }
