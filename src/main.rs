@@ -6,7 +6,7 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder,
 };
 use movie_recommendation::*;
-mod redis;
+mod redis_helper;
 mod tmdb_helper;
 // TODO: Data structure for mapping general "Vibes" to genres and keywords
 
@@ -25,12 +25,9 @@ async fn main() -> std::io::Result<()> {
             .service(get_decades)
             .service(get_simple_watch_providers)
             .service(get_movies_by_title)
-            .service(post_movies)
             .service(post_runtime)
-            .service(post_recommendations)
             .service(get_genres)
             .service(start_session)
-            .service(get_session)
             .service(post_providers)
             .service(post_genres)
             .service(post_decades)
@@ -86,20 +83,22 @@ async fn get_simple_watch_providers() -> impl Responder {
         "Crunchyroll",
         "Paramount Plus",
     ];
+    match providers.await {
+        Err(err) => HttpResponse::InternalServerError().json("Error fetching providers"),
+        Ok(providers) => {
+            let mut provider_output: Vec<WatchProvider> = providers
+                .results
+                .into_iter()
+                .filter(|p| supported_providers.contains(&p.provider_name.as_str()))
+                .collect();
 
-    let mut provider_output: Vec<WatchProvider> = providers
-        .await
-        .expect("Uh oh")
-        .results
-        .into_iter()
-        .filter(|p| supported_providers.contains(&p.provider_name.as_str()))
-        .collect();
+            for provider in &mut provider_output {
+                provider.logo_path = str::replace(provider.logo_path.as_str(), "jpg", "svg");
+            }
 
-    for provider in &mut provider_output {
-        provider.logo_path = str::replace(provider.logo_path.as_str(), "jpg", "svg");
+            HttpResponse::Ok().json(provider_output)
+        }
     }
-
-    web::Json(provider_output)
 }
 
 #[get("/movies/{movie_title}")]
@@ -122,25 +121,26 @@ async fn post_decades(
 
     let decade = Decade::from_string(&decade.decade);
 
-    let mut criteria = redis::criteria_from_cache(&session_id)
-        .await
-        .expect("Uh oh");
-    criteria.decade = Some(decade);
+    match redis_helper::criteria_from_cache(&session_id).await {
+        Err(err) => HttpResponse::InternalServerError()
+            .json(format!("Error fetching session {} : {}", session_id, err)),
+        Ok(mut criteria) => {
+            criteria.decade = Some(decade);
 
-    redis::criteria_to_cache(&session_id, criteria).await;
+            match redis_helper::criteria_to_cache(&session_id, criteria).await {
+                Ok(redis_response) => {
+                    let response = format!("Posted decade for {}", id);
 
-    let response = format!("Posted decade for {}", id);
+                    println!("{}", &response);
 
-    println!("{}", &response);
-
-    HttpResponse::Ok().body(response)
-}
-
-#[post("/movies")]
-async fn post_movies(movies: web::Json<Vec<Movie>>) -> impl Responder {
-    println!("I got: {:#?}", movies);
-
-    HttpResponse::Ok().body("Got the movies")
+                    HttpResponse::Ok().body(response)
+                }
+                Err(err) => {
+                    HttpResponse::InternalServerError().body(err.detail().unwrap().to_string())
+                }
+            }
+        }
+    }
 }
 
 #[post("/watch_providers/{session_id}")]
@@ -150,19 +150,26 @@ async fn post_providers(
 ) -> impl Responder {
     let id = session_id.clone();
 
-    let mut criteria = redis::criteria_from_cache(&session_id)
-        .await
-        .expect("Uh oh");
+    match redis_helper::criteria_from_cache(&session_id).await {
+        Err(err) => HttpResponse::InternalServerError()
+            .json(format!("Error fetching session {} : {}", session_id, err)),
+        Ok(mut criteria) => {
+            criteria.watch_providers = Some(providers.into_inner());
 
-    criteria.watch_providers = Some(providers.into_inner());
+            match redis_helper::criteria_to_cache(&session_id, criteria).await {
+                Ok(redis_response) => {
+                    let response = format!("Posted providers for {}", id);
 
-    redis::criteria_to_cache(&session_id, criteria).await;
+                    println!("{}", &response);
 
-    let response = format!("Posted providers for {}", id);
-
-    println!("{}", &response);
-
-    HttpResponse::Ok().body(response)
+                    HttpResponse::Ok().body(response)
+                }
+                Err(err) => {
+                    HttpResponse::InternalServerError().body(err.detail().unwrap().to_string())
+                }
+            }
+        }
+    }
 }
 
 #[post("/genres/{session_id}")]
@@ -172,19 +179,26 @@ async fn post_genres(
 ) -> impl Responder {
     let id = session_id.clone();
 
-    let mut criteria = redis::criteria_from_cache(&session_id)
-        .await
-        .expect("Uh oh");
+    match redis_helper::criteria_from_cache(&session_id).await {
+        Err(err) => HttpResponse::InternalServerError()
+            .json(format!("Error fetching session {} : {}", session_id, err)),
+        Ok(mut criteria) => {
+            criteria.genres = Some(genres.into_inner());
 
-    criteria.genres = Some(genres.into_inner());
+            match redis_helper::criteria_to_cache(&session_id, criteria).await {
+                Ok(redis_response) => {
+                    let response = format!("Posted genres for{}", id);
 
-    redis::criteria_to_cache(&session_id, criteria).await;
+                    println!("{}", &response);
 
-    let response = format!("Posted genres for{}", id);
-
-    println!("{}", &response);
-
-    HttpResponse::Ok().body(response)
+                    HttpResponse::Ok().body(response)
+                }
+                Err(err) => {
+                    HttpResponse::InternalServerError().body(err.detail().unwrap().to_string())
+                }
+            }
+        }
+    }
 }
 
 #[post("/runtime/{session_id}")]
@@ -195,75 +209,67 @@ async fn post_runtime(
     let id = session_id.clone();
     println!("Received a runtime: {:#?}", runtime);
 
-    let mut criteria = redis::criteria_from_cache(&session_id)
-        .await
-        .expect("Uh oh");
+    match redis_helper::criteria_from_cache(&session_id).await {
+        Err(err) => HttpResponse::InternalServerError()
+            .json(format!("Error fetching session {} : {}", session_id, err)),
+        Ok(mut criteria) => {
+            criteria.runtime = Some(runtime.into_inner().runtime);
 
-    criteria.runtime = Some(runtime.into_inner().runtime);
+            match redis_helper::criteria_to_cache(&session_id, criteria).await {
+                Ok(redis_response) => {
+                    let response = format!("Posted runtime for {}", &id);
 
-    redis::criteria_to_cache(&session_id, criteria).await;
-
-    let response = format!("Posted runtime for {}", &id);
-
-    HttpResponse::Ok().body(response)
+                    HttpResponse::Ok().body(response)
+                }
+                Err(err) => {
+                    HttpResponse::InternalServerError().body(err.detail().unwrap().to_string())
+                }
+            }
+        }
+    }
 }
 
 #[get("/recommend/{session_id}")]
 async fn get_recommendations(session_id: web::Path<String>) -> impl Responder {
     let tmdb = Tmdb::shared_instance();
 
-    let recs = tmdb_helper::get_recommendations_for_session(tmdb, session_id.into_inner())
-        .await
-        .expect("Error getting recommendations");
+    match tmdb_helper::get_recommendations_for_session(tmdb, session_id.into_inner()).await {
+        Err(err) => HttpResponse::InternalServerError()
+            .json(format!("Error fetching recommendations for ID: {}", err)),
+        Ok(recs) => {
+            let mut movie_recommendations: Vec<MovieRecommendation> = vec![];
 
-    let mut movie_recommendations: Vec<MovieRecommendation> = vec![];
+            for rec in recs {
+                let providers: Vec<WatchProvider> = rec
+                    .async_providers
+                    .await
+                    .expect(format!("Error fetching watch providers for {}", rec.movie.id).as_str())
+                    .results
+                    .us
+                    .flatrate;
+                movie_recommendations.push(MovieRecommendation {
+                    movie: rec.movie,
+                    providers,
+                })
+            }
 
-    for rec in recs {
-        let providers: Vec<WatchProvider> = rec.fut_prov.await.expect("Uh oh").results.us.flatrate;
-        movie_recommendations.push(MovieRecommendation {
-            movie: rec.movie,
-            providers,
-        })
+            HttpResponse::Ok().json(movie_recommendations)
+        }
     }
-
-    HttpResponse::Ok().json(movie_recommendations)
-}
-
-#[post("/recommendations")]
-async fn post_recommendations(criteria: web::Json<RecommendationCriteria>) -> impl Responder {
-    let tmdb = Tmdb::shared_instance();
-
-    let recs = tmdb_helper::get_recommendations_from_criteria(tmdb, criteria.into_inner())
-        .await
-        .expect("Error getting movie results");
-
-    let mut movie_recommendations: Vec<MovieRecommendation> = vec![];
-
-    for rec in recs {
-        let providers: Vec<WatchProvider> = rec.fut_prov.await.expect("Uh oh ").results.us.flatrate;
-        movie_recommendations.push(MovieRecommendation {
-            movie: rec.movie,
-            providers: providers,
-        })
-    }
-
-    HttpResponse::Ok().json(movie_recommendations)
 }
 
 #[get("/genres")]
 async fn get_genres() -> impl Responder {
     let tmdb = Tmdb::shared_instance();
 
-    HttpResponse::Ok().json(tmdb.get_genre_list().await.expect("Uh oh").genres)
-}
+    let genre_list = tmdb.get_genre_list().await;
 
-#[get{"/get_session/{session_id}"}]
-async fn get_session(session_id: web::Path<String>) -> impl Responder {
-    HttpResponse::Ok().body(
-        redis::get_session(session_id.into_inner())
-            .await
-            .to_string(),
-    )
+    match tmdb.get_genre_list().await {
+        Ok(list) => HttpResponse::Ok().json(list.genres),
+        Err(err) => {
+            HttpResponse::InternalServerError().json(format!("Error fetching genres: {}", err))
+        }
+    }
 }
 
 #[get{"/start_session"}]
@@ -271,5 +277,8 @@ async fn start_session() -> impl Responder {
     println!("Got request to start session");
     log::info!("Starting session");
 
-    HttpResponse::Ok().body(redis::start_recommendation_session().await)
+    match redis_helper::start_recommendation_session().await {
+        Err(err) => HttpResponse::InternalServerError().body(err.detail().unwrap().to_string()),
+        Ok(session_id) => HttpResponse::Ok().body(session_id),
+    }
 }
