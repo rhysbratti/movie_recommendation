@@ -2,7 +2,7 @@ use movie_recommendation::*;
 use redis::{Commands, Connection};
 use uuid::Uuid;
 
-const CONNECTION_STRING: &str = "redis://redis-server:6379";
+const CONNECTION_STRING: &str = "redis://localhost:6379";
 
 pub async fn criteria_from_cache(
     session_id: &String,
