@@ -1,0 +1,23 @@
+name: Cargo Build & Test
+
+on:
+  push:
+  pull_request:
+
+env: 
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      redis-server:
+        image: redis:latest
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping"
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo build --verbose
+      - run: cargo test --verbose
