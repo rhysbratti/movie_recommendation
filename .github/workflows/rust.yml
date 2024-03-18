@@ -17,7 +17,10 @@ jobs:
         ports:
           - 6379:6379
         options: --health-cmd "redis-cli ping"
+        
     steps:
       - uses: actions/checkout@v3
+      - run: echo "${{ secrets.API_KEY }}" > $API_KEY_PATH
       - run: cargo build --verbose
       - run: cargo test --verbose
+      - run: rm -rf $API_KEY_PATH
