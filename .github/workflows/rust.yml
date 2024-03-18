@@ -19,8 +19,27 @@ jobs:
         options: --health-cmd "redis-cli ping"
         
     steps:
-      - uses: actions/checkout@v3
-      - run: echo "${{ secrets.API_KEY }}" > $API_KEY_PATH
-      - run: cargo build --verbose
-      - run: cargo test --verbose
-      - run: rm -rf $API_KEY_PATH
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          path: rec_temp
+          
+      - name: Create dir
+        run: |
+          mkdir rec_temp/config
+          
+      - name: Init API Key 
+        run: echo "${{ secrets.API_KEY }}" > rec_temp/config/api.key 
+        
+      - name: Build 
+        run: cargo build --verbose
+        working-directory: rec_temp
+
+        
+      - name: Test
+        run: cargo test --verbose
+        working-directory: rec_temp
+
+      - name: Cleanup
+        run: |
+          rm -rf rec_temp/config
