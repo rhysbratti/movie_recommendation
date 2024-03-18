@@ -5,6 +5,8 @@ use actix_web::{
     web::{self},
     App, HttpResponse, HttpServer, Responder,
 };
+#[macro_use]
+extern crate lazy_static;
 use movie_recommendation::*;
 mod redis_helper;
 mod tmdb_helper;
@@ -12,8 +14,7 @@ mod tmdb_helper;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::init();
-    log::info!("starting server on port 8585");
+    println!("starting server on port 8585");
     let tmdb = Tmdb::shared_instance();
 
     HttpServer::new(|| {
@@ -275,8 +276,6 @@ async fn get_genres() -> impl Responder {
 #[get{"/start_session"}]
 async fn start_session() -> impl Responder {
     println!("Got request to start session");
-    log::info!("Starting session");
-
     match redis_helper::start_recommendation_session().await {
         Err(err) => HttpResponse::InternalServerError().body(err.detail().unwrap().to_string()),
         Ok(session_id) => HttpResponse::Ok().body(session_id),

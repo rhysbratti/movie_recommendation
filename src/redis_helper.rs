@@ -2,7 +2,20 @@ use movie_recommendation::*;
 use redis::{Commands, Connection};
 use uuid::Uuid;
 
-const CONNECTION_STRING: &str = "redis://localhost:6379";
+//const CONNECTION_STRING: &str = "redis://localhost:6379";
+
+lazy_static! {
+    static ref CONNECTION_STRING: String = match std::env::var("REDIS_CONNECTION_STRING") {
+        Ok(s) => {
+            println!("Env connection string found...");
+            s
+        }
+        Err(e) => {
+            println!("Connection string not set. Defaulting...");
+            "redis://localhost:6379".to_string()
+        }
+    };
+}
 
 pub async fn criteria_from_cache(
     session_id: &String,
@@ -58,8 +71,7 @@ pub async fn start_recommendation_session() -> Result<String, redis::RedisError>
 }
 
 fn get_connection() -> Result<Connection, redis::RedisError> {
-    let client = redis::Client::open(CONNECTION_STRING);
-    match redis::Client::open(CONNECTION_STRING) {
+    match redis::Client::open(CONNECTION_STRING.as_str()) {
         Ok(client) => client.get_connection(),
         Err(err) => Err(err),
     }

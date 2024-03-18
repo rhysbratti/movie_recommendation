@@ -1,6 +1,7 @@
 use std::fs;
 use std::sync::Arc;
 
+#[allow(unused_imports)]
 #[macro_use]
 extern crate lazy_static;
 
