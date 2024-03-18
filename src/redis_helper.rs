@@ -2,7 +2,7 @@ use movie_recommendation::*;
 use redis::{Commands, Connection};
 use uuid::Uuid;
 
-const CONNECTION_STRING: &str = "redis://localhost:6379";
+const CONNECTION_STRING: &str = "redis://redis:6379";
 
 pub async fn criteria_from_cache(
     session_id: &String,
@@ -72,20 +72,20 @@ pub async fn end_session(session_id: String) {
 }
 
 #[cfg(test)]
-mod tests {
+mod local_redis {
     use std::vec;
 
     use super::*;
     use redis::ConnectionLike;
 
     #[tokio::test]
-    async fn test_connection() {
+    async fn redis_connection() {
         let mut con = get_connection().unwrap();
         assert!(con.check_connection());
     }
 
     #[tokio::test]
-    async fn test_criteria_roundtrip() {
+    async fn redis_criteria_roundtrip() {
         let session_id = start_recommendation_session().await;
 
         assert!(session_id.is_ok());
@@ -120,7 +120,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_start_session() {
+    async fn redis_start_session() {
         let empty_criteria_string =
             "{\"genres\":null,\"watch_providers\":null,\"runtime\":null,\"decade\":null}";
         let response = start_recommendation_session().await;
