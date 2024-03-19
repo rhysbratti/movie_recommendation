@@ -5,6 +5,7 @@ use std::sync::Arc;
 #[macro_use]
 extern crate lazy_static;
 
+use futures::sink::Feed;
 use reqwest::{
     header::{ACCEPT, AUTHORIZATION, USER_AGENT},
     Response,
@@ -17,6 +18,25 @@ pub struct RecommendationCriteria {
     pub watch_providers: Option<Vec<WatchProvider>>,
     pub runtime: Option<Runtime>,
     pub decade: Option<Decade>,
+    pub feedback: Option<Feedback>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct Feedback {
+    pub like: Option<Vec<i64>>,
+    pub dislike: Option<Vec<i64>>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct Keyword {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct KeywordResponse {
+    pub id: i64,
+    pub keywords: Vec<Keyword>,
 }
 
 /*
@@ -275,7 +295,7 @@ impl Tmdb {
             .expect("Unable to read API Key!")
             .trim()
             .to_string();
-        let base_url: String = String::from("https://api.themoviedb.org/3/");
+        let base_url: String = String::from("https://api.themoviedb.org/3");
         Self { api_key, base_url }
     }
 
@@ -288,7 +308,7 @@ impl Tmdb {
     async fn make_tmdb_request(&self, url: &String) -> Result<Response, reqwest::Error> {
         let client = reqwest::Client::new();
         client
-            .get(url)
+            .get(format!("{}/{}", self.base_url, url))
             .header(AUTHORIZATION, format!("Bearer {0}", self.api_key))
             .header(ACCEPT, "application/json")
             .header(USER_AGENT, "rust web-api demo")
@@ -310,6 +330,19 @@ impl Tmdb {
         Ok(movie_results)
     }
 
+    pub async fn get_keywords_for_id(
+        &self,
+        movie_id: &i64,
+    ) -> Result<KeywordResponse, Box<dyn std::error::Error>> {
+        let url = format!("movie/{}/keywords", movie_id);
+
+        let keyword_response = self.make_tmdb_request(&url).await?;
+
+        let keyword_results = keyword_response.json::<KeywordResponse>().await?;
+
+        Ok(keyword_results)
+    }
+
     /* Gets watch providers by movie ID */
     /* Watch providers are given by country, and by type: */
     /* For this application we are mostly interested in "flatrate" */
@@ -317,7 +350,7 @@ impl Tmdb {
         &self,
         movie_id: &String,
     ) -> Result<GetWatchProvidersResponse, Box<dyn std::error::Error>> {
-        let url = format!("{}/movie/{}/watch/providers", self.base_url, movie_id);
+        let url = format!("movie/{}/watch/providers", movie_id);
 
         let provider_response = self.make_tmdb_request(&url).await?;
 
@@ -329,7 +362,7 @@ impl Tmdb {
     }
 
     pub async fn get_genre_list(&self) -> Result<GetGenresResponse, Box<dyn std::error::Error>> {
-        let url = format!("{}/genre/movie/list?language=en", self.base_url);
+        let url = "genre/movie/list?language=en".to_string();
 
         let genre_response = self.make_tmdb_request(&url).await?;
 
@@ -341,10 +374,7 @@ impl Tmdb {
     pub async fn get_providers_list(
         &self,
     ) -> Result<GetProvidersResponse, Box<dyn std::error::Error>> {
-        let url = format!(
-            "{}/watch/providers/movie?language=en-US&watch_region=US",
-            self.base_url
-        );
+        let url = "watch/providers/movie?language=en-US&watch_region=US".to_string();
 
         let providers_response = self.make_tmdb_request(&url).await?;
 
@@ -362,6 +392,7 @@ impl Tmdb {
         watch_providers: Vec<WatchProvider>,
         runtime: Runtime,
         decade: Decade,
+        feedback: Option<Feedback>,
     ) -> Result<GetRecommendationsResponse, Box<dyn std::error::Error>> {
         let genre_ids: String = genres
             .iter()
@@ -379,16 +410,44 @@ impl Tmdb {
 
         let end_date = decade.year_range().1;
 
-        let url = format!(
-            "{}/discover/movie?include_adult=false&include_video=false&language=en-US&page=1&primary_release_date.gte={}-01-01&primary_release_date.lte={}-12-31&with_runtime.gte={}&with_runtime.lte={}&sort_by=popularity.desc&watch_region=US&with_genres={}&with_watch_monetization_types=flatrate&with_watch_providers={}",
-            self.base_url,
-            start_date,
-            end_date,
-            runtime.runtime().0,
-            runtime.runtime().1,
-            genre_ids,
-            provider_ids
+        let mut url = format!(
+            "discover/movie?include_adult=false&include_video=false&language=en-US&page=1&{}&{}&{}&{}&sort_by=popularity.desc&watch_region=US&{}&with_watch_monetization_types=flatrate&{}",
+            format!("primary_release_date.gte={}-01-01", start_date),
+            format!("primary_release_date.lte={}-12-31", end_date),
+            format!("with_runtime.gte={}", runtime.runtime().0),
+            format!("with_runtime.lte={}",runtime.runtime().1),
+            format!("with_genres={}", genre_ids),
+            format!("with_watch_providers={}",provider_ids)
         );
+
+        match feedback {
+            Some(feedback) => {
+                match feedback.like {
+                    Some(keywords) => url.push_str(&format!(
+                        "with_keywords={}",
+                        keywords
+                            .iter()
+                            .map(|k| k.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )),
+                    None => println!("Nothing"),
+                };
+
+                match feedback.dislike {
+                    Some(keywords) => url.push_str(&format!(
+                        "without_keywords={}",
+                        keywords
+                            .iter()
+                            .map(|k| k.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )),
+                    None => println!("Nothing"),
+                };
+            }
+            None => {}
+        }
 
         println!("{}", &url);
 
@@ -636,6 +695,11 @@ mod tests {
 
         let decade = Decade::TwentyTens;
 
+        let feedback = Feedback {
+            like: None,
+            dislike: None,
+        };
+
         let api_key = String::from("supersecret");
         let tmdb = Tmdb {
             base_url: MOCK_TMDB_VALID.base_url(),
@@ -673,7 +737,7 @@ mod tests {
         };
 
         let response = tmdb
-            .get_recommendations(genres, watch_providers, runtime, decade)
+            .get_recommendations(genres, watch_providers, runtime, decade, Some(feedback))
             .await;
 
         rec_mock.assert();

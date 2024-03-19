@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables)]
 use movie_recommendation::*;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::redis_helper;
 
@@ -18,6 +18,7 @@ pub async fn get_recommendations_for_session(
             criteria.watch_providers.expect("No watch providers for ID"),
             criteria.runtime.expect("No runtime for ID"),
             criteria.decade.expect("No decade for ID"),
+            criteria.feedback,
         )
         .await?;
     let mut index = 0;
@@ -66,6 +67,122 @@ pub async fn get_providers_from_id(
     Ok(provider_results.results.us.flatrate)
 }
 
+struct AsyncFeedback {
+    movie_id: i64,
+    keyword_future: tokio::task::JoinHandle<KeywordResponse>,
+}
+
+async fn get_futures(tmdb: &Arc<Tmdb>, id_list: Vec<i64>) -> Vec<AsyncFeedback> {
+    let mut futures: Vec<AsyncFeedback> = vec![];
+
+    for id in id_list {
+        let temp_tmdb = Arc::clone(&tmdb);
+        let handle = tokio::spawn(async move {
+            temp_tmdb
+                .get_keywords_for_id(&id)
+                .await
+                .expect("Unable to call tmdb")
+        });
+        futures.push(AsyncFeedback {
+            movie_id: id,
+            keyword_future: handle,
+        });
+    }
+
+    futures
+}
+
+async fn get_keyword_list(feedback: Vec<AsyncFeedback>) -> Vec<Keyword> {
+    let mut keywords_list: Vec<Keyword> = vec![];
+    for keyword_future in feedback {
+        let keywords = keyword_future.keyword_future.await;
+        match keywords {
+            Ok(mut keyword_response) => keywords_list.append(&mut keyword_response.keywords),
+            Err(err) => println!("{}", err),
+        };
+    }
+
+    keywords_list
+}
+
+async fn get_keyword_votes(keywords: Vec<Keyword>) -> HashMap<i64, i16> {
+    let mut votes: HashMap<i64, i16> = HashMap::new();
+    for keyword in keywords {
+        if votes.contains_key(&keyword.id) {
+            votes.insert(keyword.id, votes.get(&keyword.id).unwrap() + 1);
+        } else {
+            votes.insert(keyword.id, 1);
+        }
+    }
+
+    votes
+}
+
+async fn refine_keywords(
+    mut upvotes: HashMap<i64, i16>,
+    mut downvotes: HashMap<i64, i16>,
+) -> (HashMap<i64, i16>, HashMap<i64, i16>) {
+    let mut remove_upvotes: Vec<i64> = vec![];
+
+    for (id, count) in &mut upvotes {
+        if downvotes.contains_key(&id) {
+            if downvotes.get(&id).unwrap() >= count {
+                downvotes.remove(&id);
+            } else {
+                // Can't modify a collection we're iterating over
+                remove_upvotes.push(*id);
+            }
+        }
+    }
+
+    for id in remove_upvotes {
+        upvotes.remove(&id);
+    }
+
+    (upvotes, downvotes)
+}
+
+pub async fn process_feedback(
+    tmdb: Arc<Tmdb>,
+    thumbs_up_ids: Vec<i64>,
+    thumbs_down_ids: Vec<i64>,
+) -> (Vec<i64>, Vec<i64>) {
+    let thumbs_up_future = get_futures(&tmdb, thumbs_up_ids);
+    let thumbs_down_future = get_futures(&tmdb, thumbs_down_ids);
+
+    let thumbs_up_keywords = get_keyword_list(thumbs_up_future.await);
+    let thumbs_down_keywords = get_keyword_list(thumbs_down_future.await);
+
+    let thumbs_up_votes = get_keyword_votes(thumbs_up_keywords.await).await;
+    let thumbs_down_votes = get_keyword_votes(thumbs_down_keywords.await).await;
+
+    let (refined_upvotes, refined_downvotes) =
+        refine_keywords(thumbs_up_votes, thumbs_down_votes).await;
+
+    let mut sorted_up_votes: Vec<_> = refined_upvotes.iter().collect();
+
+    sorted_up_votes.sort_by_key(|&(_, count)| std::cmp::Reverse(*count));
+
+    let mut sorted_down_votes: Vec<_> = refined_downvotes.iter().collect();
+
+    sorted_down_votes.sort_by_key(|&(_, count)| std::cmp::Reverse(*count));
+
+    let mut criteria_upvotes: Vec<i64> = vec![];
+    let mut criteria_downvotes: Vec<i64> = vec![];
+
+    println!("Upvotes: ");
+    for (&id, &count) in sorted_up_votes.iter().take(5) {
+        criteria_upvotes.push(id);
+    }
+
+    println!("Downvotes: ");
+    for (&id, &count) in sorted_down_votes.iter().take(5) {
+        criteria_downvotes.push(id)
+    }
+
+    (criteria_upvotes, criteria_downvotes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,6 +206,7 @@ mod tests {
             }]),
             runtime: Some(Runtime::from_string("Average")),
             decade: Some(Decade::from_string("Recent")),
+            feedback: None,
         }
     }
 

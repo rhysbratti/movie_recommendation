@@ -58,6 +58,7 @@ pub async fn start_recommendation_session() -> Result<String, redis::RedisError>
                 watch_providers: None,
                 runtime: None,
                 decade: None,
+                feedback: None,
             };
 
             let json_string = serde_json::to_string(&criteria).expect("Unable to parse criteria");
@@ -116,6 +117,7 @@ mod local_redis {
             }]),
             runtime: Some(Runtime::MovieNight),
             decade: Some(Decade::Eighties),
+            feedback: None,
         };
 
         let to_cache_result = criteria_to_cache(&session_id, criteria_start.clone()).await;
@@ -134,7 +136,7 @@ mod local_redis {
     #[tokio::test]
     async fn redis_start_session() {
         let empty_criteria_string =
-            "{\"genres\":null,\"watch_providers\":null,\"runtime\":null,\"decade\":null}";
+            "{\"genres\":null,\"watch_providers\":null,\"runtime\":null,\"decade\":null,\"feedback\":null}";
         let response = start_recommendation_session().await;
 
         assert!(response.is_ok());

@@ -33,6 +33,8 @@ async fn main() -> std::io::Result<()> {
             .service(post_genres)
             .service(post_decades)
             .service(get_recommendations)
+            .service(post_feedback)
+            .service(get_session_criteria)
     })
     .bind("0.0.0.0:8585")?
     .run()
@@ -228,6 +230,49 @@ async fn post_runtime(
             }
         }
     }
+}
+
+#[post("/feedback/{session_id}")]
+async fn post_feedback(
+    session_id: web::Path<String>,
+    feedback: web::Json<Feedback>,
+) -> impl Responder {
+    let tmdb = Tmdb::shared_instance();
+    let feedback = feedback.into_inner();
+
+    match redis_helper::criteria_from_cache(&session_id).await {
+        Err(err) => HttpResponse::InternalServerError()
+            .json(format!("Error fetching session {} : {}", session_id, err)),
+        Ok(mut criteria) => {
+            let (upvotes, downvotes) = tmdb_helper::process_feedback(
+                tmdb,
+                feedback.like.unwrap(),
+                feedback.dislike.unwrap(),
+            )
+            .await;
+
+            criteria.feedback = Some(Feedback {
+                like: Some(upvotes),
+                dislike: Some(downvotes),
+            });
+
+            match redis_helper::criteria_to_cache(&session_id, criteria).await {
+                Err(err) => {
+                    HttpResponse::InternalServerError().body(err.detail().unwrap().to_string())
+                }
+                Ok(redis_response) => HttpResponse::Ok().body("Posted feedback"),
+            }
+        }
+    }
+}
+
+#[get("/session_criteria/{session_id}")]
+async fn get_session_criteria(session_id: web::Path<String>) -> impl Responder {
+    let criteria = redis_helper::criteria_from_cache(&session_id)
+        .await
+        .expect("Uh oh");
+
+    HttpResponse::Ok().json(criteria)
 }
 
 #[get("/recommend/{session_id}")]
