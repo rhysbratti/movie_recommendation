@@ -126,7 +126,7 @@ async fn refine_keywords(
 
     for (id, count) in &mut upvotes {
         if downvotes.contains_key(&id) {
-            if downvotes.get(&id).unwrap() >= count {
+            if downvotes.get(&id).unwrap() < count {
                 downvotes.remove(&id);
             } else {
                 // Can't modify a collection we're iterating over
@@ -185,9 +185,15 @@ pub async fn process_feedback(
 
 #[cfg(test)]
 mod tests {
-    use futures::future;
+    use std::fs;
 
     use super::*;
+    use httpmock::{prelude::*, Mock};
+
+    lazy_static! {
+        static ref MOCK_TMDB_VALID: MockServer = MockServer::start();
+        static ref MOCK_TMDB_INVALID: MockServer = MockServer::start();
+    }
 
     fn get_criteria() -> RecommendationCriteria {
         RecommendationCriteria {
@@ -210,6 +216,104 @@ mod tests {
             decade: Some(Decade::from_string("Recent")),
             feedback: None,
         }
+    }
+
+    #[allow(dead_code)]
+    fn get_json_from_file(file_name: &str) -> String {
+        fs::read_to_string(format!(
+            "src/test/keyword_responses/keyword_response_movie_{}.json",
+            file_name
+        ))
+        .expect("Error parsing file")
+    }
+
+    async fn build_mock_endpoint(movie_id: &i64, api_key: &String) -> Mock<'static> {
+        let keywords_response = get_json_from_file(&movie_id.to_string());
+
+        MOCK_TMDB_VALID.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/movie/{}/keywords", movie_id))
+                .header("Authorization", format!("Bearer {}", &api_key));
+            then.status(200).body(keywords_response);
+        })
+    }
+
+    #[tokio::test]
+    async fn test_keyword_process() {
+        let api_key = String::from("supersecret");
+        let tmdb = Tmdb::mock_shared_instance(api_key.clone(), MOCK_TMDB_VALID.base_url());
+
+        let thumbs_up_ids = vec![123, 456, 789];
+        let thumbs_down_ids = vec![321, 654, 987];
+        let mut upvote_map: HashMap<i64, Mock<'static>> = HashMap::new();
+        let mut downvote_map: HashMap<i64, Mock<'static>> = HashMap::new();
+
+        for id in &thumbs_up_ids {
+            upvote_map.insert(id.clone(), build_mock_endpoint(id, &api_key).await);
+        }
+
+        for id in &thumbs_down_ids {
+            downvote_map.insert(id.clone(), build_mock_endpoint(id, &api_key).await);
+        }
+
+        let (mut criteria_upvotes, mut criteria_downvotes) =
+            process_feedback(tmdb, thumbs_up_ids, thumbs_down_ids).await;
+
+        criteria_upvotes.sort();
+        criteria_downvotes.sort();
+
+        for (id, mock_endpoint) in upvote_map {
+            mock_endpoint.assert();
+        }
+        for (id, mock_endpoint) in downvote_map {
+            mock_endpoint.assert();
+        }
+
+        assert!(!criteria_upvotes.is_empty());
+        assert!(!criteria_downvotes.is_empty());
+
+        let expected_upvotes = vec![3210, 5678, 6523];
+        let expected_downvotes = vec![1111, 8888, 9999, 91011];
+
+        assert_eq!(criteria_upvotes, expected_upvotes);
+        assert_eq!(criteria_downvotes, expected_downvotes);
+    }
+
+    #[tokio::test]
+    async fn test_keyword_refinement() {
+        let mut upvotes: HashMap<i64, i16> = HashMap::new();
+        let mut downvotes: HashMap<i64, i16> = HashMap::new();
+
+        upvotes.insert(4444, 4);
+        upvotes.insert(3333, 3);
+        upvotes.insert(2222, 2);
+        upvotes.insert(1111, 1);
+
+        downvotes.insert(4444, 4);
+        downvotes.insert(2222, 1);
+        downvotes.insert(1111, 3);
+        downvotes.insert(3333, 2);
+
+        let (refined_upvotes, refined_downvotes) = refine_keywords(upvotes, downvotes).await;
+
+        assert!(!refined_upvotes.is_empty());
+        assert!(!refined_downvotes.is_empty());
+
+        // Upvotes should have 2222 and 3333
+        assert!(!refined_upvotes.contains_key(&4444));
+        assert!(refined_upvotes.contains_key(&3333));
+        assert_eq!(refined_upvotes.get(&3333).unwrap(), &3i16);
+        assert!(refined_upvotes.contains_key(&2222));
+        assert_eq!(refined_upvotes.get(&2222).unwrap(), &2i16);
+        assert!(!refined_upvotes.contains_key(&1111));
+
+        // Downvotes should have 4444 and 1111
+        assert!(refined_downvotes.contains_key(&4444));
+        assert_eq!(refined_downvotes.get(&4444).unwrap(), &4i16);
+        assert!(!refined_downvotes.contains_key(&2222));
+        assert!(refined_downvotes.contains_key(&1111));
+        assert_eq!(refined_downvotes.get(&1111).unwrap(), &3i16);
+        assert!(!refined_downvotes.contains_key(&3333));
     }
 
     #[tokio::test]

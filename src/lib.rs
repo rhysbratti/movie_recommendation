@@ -5,7 +5,6 @@ use std::sync::Arc;
 #[macro_use]
 extern crate lazy_static;
 
-use futures::sink::Feed;
 use reqwest::{
     header::{ACCEPT, AUTHORIZATION, USER_AGENT},
     Response,
@@ -299,6 +298,14 @@ impl Tmdb {
         Self { api_key, base_url }
     }
 
+    pub fn mock(api_key: String, base_url: String) -> Self {
+        Self { api_key, base_url }
+    }
+
+    pub fn mock_shared_instance(api_key: String, base_url: String) -> Arc<Self> {
+        Arc::new(Self::mock(api_key, base_url))
+    }
+
     /* For building shared instance */
     pub fn shared_instance() -> Arc<Self> {
         Arc::new(Self::new())
@@ -461,6 +468,10 @@ impl Tmdb {
         Ok(recommendations)
     }
 }
+
+/* ======================================================================================================================== */
+/* ====================================================== UNIT TESTS ====================================================== */
+/* ======================================================================================================================== */
 
 #[allow(dead_code)]
 #[cfg(test)]
