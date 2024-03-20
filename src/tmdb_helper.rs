@@ -72,7 +72,7 @@ struct AsyncFeedback {
     keyword_future: tokio::task::JoinHandle<KeywordResponse>,
 }
 
-async fn get_futures(tmdb: &Arc<Tmdb>, id_list: Vec<i64>) -> Vec<AsyncFeedback> {
+async fn get_keyword_futures(tmdb: &Arc<Tmdb>, id_list: Vec<i64>) -> Vec<AsyncFeedback> {
     let mut futures: Vec<AsyncFeedback> = vec![];
 
     for id in id_list {
@@ -147,8 +147,8 @@ pub async fn process_feedback(
     thumbs_up_ids: Vec<i64>,
     thumbs_down_ids: Vec<i64>,
 ) -> (Vec<i64>, Vec<i64>) {
-    let thumbs_up_future = get_futures(&tmdb, thumbs_up_ids);
-    let thumbs_down_future = get_futures(&tmdb, thumbs_down_ids);
+    let thumbs_up_future = get_keyword_futures(&tmdb, thumbs_up_ids);
+    let thumbs_down_future = get_keyword_futures(&tmdb, thumbs_down_ids);
 
     let thumbs_up_keywords = get_keyword_list(thumbs_up_future.await);
     let thumbs_down_keywords = get_keyword_list(thumbs_down_future.await);
@@ -185,6 +185,8 @@ pub async fn process_feedback(
 
 #[cfg(test)]
 mod tests {
+    use futures::future;
+
     use super::*;
 
     fn get_criteria() -> RecommendationCriteria {
@@ -207,6 +209,79 @@ mod tests {
             runtime: Some(Runtime::from_string("Average")),
             decade: Some(Decade::from_string("Recent")),
             feedback: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_keyword_votes() {
+        let keywords = vec![
+            Keyword {
+                id: 111,
+                name: "testing".to_string(),
+            },
+            Keyword {
+                id: 111,
+                name: "testing".to_string(),
+            },
+            Keyword {
+                id: 111,
+                name: "testing".to_string(),
+            },
+            Keyword {
+                id: 222,
+                name: "foo".to_string(),
+            },
+            Keyword {
+                id: 222,
+                name: "foo".to_string(),
+            },
+            Keyword {
+                id: 333,
+                name: "bar".to_string(),
+            },
+        ];
+        let keyword_map: HashMap<i64, i16> = get_keyword_votes(keywords).await;
+
+        assert_eq!(keyword_map.get(&111).unwrap(), &3i16);
+        assert_eq!(keyword_map.get(&222).unwrap(), &2i16);
+        assert_eq!(keyword_map.get(&333).unwrap(), &1i16);
+    }
+
+    #[tokio::test]
+    async fn test_keyword_list() {
+        let tmdb = Tmdb::shared_instance();
+
+        let movie_ids = vec![82702, 62177];
+
+        let future_response: Vec<AsyncFeedback> =
+            get_keyword_futures(&tmdb, movie_ids.clone()).await;
+
+        assert!(!future_response.is_empty());
+
+        let keyword_response: Vec<Keyword> = get_keyword_list(future_response).await;
+
+        assert!(!keyword_response.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_keyword_futures() {
+        let tmdb = Tmdb::shared_instance();
+
+        let movie_ids = vec![82702, 62177];
+
+        let future_response = get_keyword_futures(&tmdb, movie_ids.clone()).await;
+
+        assert!(!future_response.is_empty());
+
+        for future in future_response {
+            let id = future.movie_id;
+            assert!(&movie_ids.contains(&id));
+
+            let keywords = future.keyword_future.await;
+
+            assert!(keywords.is_ok());
+
+            assert!(!keywords.unwrap().keywords.is_empty());
         }
     }
 

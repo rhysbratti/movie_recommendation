@@ -480,6 +480,65 @@ mod tests {
 
     #[tokio::test]
     #[should_panic]
+    async fn test_keywords_invalid() {
+        let movie_id = 12345;
+        let api_key = String::from("supersecret");
+
+        let tmdb = Tmdb {
+            base_url: MOCK_TMDB_INVALID.base_url(),
+            api_key: api_key.clone(),
+        };
+
+        let keyword_mock = MOCK_TMDB_INVALID.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/movie/{}/keywords", movie_id))
+                .header("Authorization", format!("Bearer {}", &api_key));
+            then.status(500);
+        });
+
+        let response = tmdb.get_keywords_for_id(&movie_id).await;
+
+        keyword_mock.assert();
+
+        assert!(response.is_err());
+
+        response.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_keywords() {
+        let movie_id = 438631;
+        let api_key = String::from("supersecret");
+
+        let tmdb = Tmdb {
+            base_url: MOCK_TMDB_VALID.base_url(),
+            api_key: api_key.clone(),
+        };
+
+        let keywords_response = get_json_from_file("keywords_response");
+
+        let keyword_mock = MOCK_TMDB_VALID.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/movie/{}/keywords", movie_id))
+                .header("Authorization", format!("Bearer {}", &api_key));
+            then.status(200).body(keywords_response);
+        });
+
+        let response = tmdb.get_keywords_for_id(&movie_id).await;
+
+        keyword_mock.assert();
+
+        assert!(response.is_ok());
+
+        let response = response.unwrap();
+
+        assert_eq!(response.id, movie_id);
+
+        assert!(!response.keywords.is_empty());
+    }
+
+    #[tokio::test]
+    #[should_panic]
     async fn test_watch_providers_invalid() {
         let movie_id = String::from("456");
         let api_key = String::from("supersecret");
