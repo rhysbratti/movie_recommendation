@@ -1,4 +1,6 @@
 #![allow(dead_code, unused_variables)]
+use std::sync::Arc;
+
 use actix_cors::Cors;
 use actix_web::{
     get, post,
@@ -15,13 +17,14 @@ mod tmdb_helper;
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     println!("starting server on port 8585");
-    let tmdb = Tmdb::shared_instance();
 
-    HttpServer::new(|| {
+    let tmdb = Tmdb::shared_instance();
+    HttpServer::new(move || {
         let cors = Cors::permissive();
 
         App::new()
             .wrap(cors)
+            .app_data(web::Data::new(Arc::clone(&tmdb)))
             .service(get_runtimes)
             .service(get_decades)
             .service(get_simple_watch_providers)
@@ -71,8 +74,7 @@ async fn get_decades() -> impl Responder {
 }
 
 #[get("/simplewatchproviders")]
-async fn get_simple_watch_providers() -> impl Responder {
-    let tmdb = Tmdb::shared_instance();
+async fn get_simple_watch_providers(tmdb: web::Data<Tmdb>) -> impl Responder {
     let providers = tmdb.get_providers_list();
     let supported_providers = vec![
         "Netflix",
@@ -105,10 +107,12 @@ async fn get_simple_watch_providers() -> impl Responder {
 }
 
 #[get("/movies/{movie_title}")]
-async fn get_movies_by_title(movie_title: web::Path<String>) -> impl Responder {
+async fn get_movies_by_title(
+    movie_title: web::Path<String>,
+    tmdb: web::Data<Tmdb>,
+) -> impl Responder {
     println!("Got a request for {}", movie_title);
-    let tmdb = Tmdb::shared_instance();
-    let movies = tmdb_helper::get_movies_from_title(movie_title.into_inner(), tmdb)
+    let movies = tmdb_helper::get_movies_from_title(movie_title.into_inner(), tmdb.into_inner())
         .await
         .expect("Uh oh ");
 
