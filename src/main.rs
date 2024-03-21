@@ -231,43 +231,6 @@ async fn post_runtime(
         }
     }
 }
-/*
-fn update_feedback(
-    mut criteria: &RecommendationCriteria,
-    feedback: Feedback,
-) -> &RecommendationCriteria {
-    match criteria.feedback {
-        Some(mut criteria_feedback) => {
-            match criteria_feedback.like {
-                Some(mut likes) => match feedback.like {
-                    Some(mut feedback_likes) => {
-                        likes.append(&mut feedback_likes);
-                    }
-                    None => {}
-                },
-                None => match feedback.like {
-                    Some(feedback_likes) => criteria_feedback.like = Some(feedback_likes),
-                    None => {}
-                },
-            };
-            match criteria_feedback.dislike {
-                Some(mut dislikes) => match feedback.dislike {
-                    Some(mut feedback_dislikes) => {
-                        dislikes.append(&mut feedback_dislikes);
-                    }
-                    None => {}
-                },
-                None => match feedback.dislike {
-                    Some(feedback_dislikes) => criteria_feedback.dislike = Some(feedback_dislikes),
-                    None => {}
-                },
-            };
-        }
-        None => criteria.feedback = Some(feedback),
-    }
-
-    criteria
-}*/
 
 fn update_feedback(
     mut criteria: RecommendationCriteria,
@@ -278,6 +241,8 @@ fn update_feedback(
             if let Some(feedback_likes) = feedback.like.take() {
                 likes.extend(feedback_likes);
                 criteria_feedback.like = Some(likes);
+            } else {
+                criteria_feedback.like = Some(likes);
             }
         } else {
             criteria_feedback.like = feedback.like;
@@ -285,6 +250,8 @@ fn update_feedback(
         if let Some(mut dislikes) = criteria_feedback.dislike.take() {
             if let Some(feedback_dislikes) = feedback.dislike.take() {
                 dislikes.extend(feedback_dislikes);
+                criteria_feedback.dislike = Some(dislikes);
+            } else {
                 criteria_feedback.dislike = Some(dislikes);
             }
         } else {
@@ -308,7 +275,7 @@ async fn post_feedback(
     match redis_helper::criteria_from_cache(&session_id).await {
         Err(err) => HttpResponse::InternalServerError()
             .json(format!("Error fetching session {} : {}", session_id, err)),
-        Ok(mut criteria) => {
+        Ok(criteria) => {
             let (upvotes, downvotes) = tmdb_helper::process_feedback(
                 tmdb,
                 feedback.like.unwrap(),
@@ -399,5 +366,207 @@ async fn start_session() -> impl Responder {
     match redis_helper::start_recommendation_session().await {
         Err(err) => HttpResponse::InternalServerError().body(err.detail().unwrap().to_string()),
         Ok(session_id) => HttpResponse::Ok().body(session_id),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn get_criteria() -> RecommendationCriteria {
+        RecommendationCriteria {
+            genres: Some(vec![Genre {
+                id: 234,
+                name: "test".to_string(),
+            }]),
+            watch_providers: Some(vec![WatchProvider {
+                provider_id: 434,
+                provider_name: "foo".to_string(),
+                logo_path: "/".to_string(),
+            }]),
+            runtime: Some(Runtime::Average),
+            decade: Some(Decade::Recent),
+            feedback: None,
+        }
+    }
+
+    #[test]
+    fn test_update_feedback_criteria() {
+        let mut criteria = get_criteria();
+
+        let criteria_feedback = Feedback {
+            like: Some(vec![222, 444, 666]),
+            dislike: Some(vec![111, 333, 555]),
+        };
+
+        let new_feedback = Feedback {
+            like: Some(vec![888, 1010, 1212]),
+            dislike: Some(vec![777, 999, 1111]),
+        };
+
+        criteria.feedback = Some(criteria_feedback);
+
+        let updated_criteria = update_feedback(criteria, new_feedback);
+
+        assert!(updated_criteria.feedback.is_some());
+
+        let updated_feedback = updated_criteria.feedback.unwrap();
+
+        assert_eq!(
+            updated_feedback.like.unwrap(),
+            vec![222, 444, 666, 888, 1010, 1212]
+        );
+
+        assert_eq!(
+            updated_feedback.dislike.unwrap(),
+            vec![111, 333, 555, 777, 999, 1111]
+        );
+    }
+
+    #[test]
+    fn test_update_feedback_criteria_empty_likes() {
+        let mut criteria = get_criteria();
+
+        let criteria_feedback = Feedback {
+            like: None,
+            dislike: Some(vec![111, 333, 555]),
+        };
+
+        let new_feedback = Feedback {
+            like: Some(vec![888, 1010, 1212]),
+            dislike: Some(vec![777, 999, 1111]),
+        };
+
+        criteria.feedback = Some(criteria_feedback);
+
+        let updated_criteria = update_feedback(criteria, new_feedback);
+
+        assert!(updated_criteria.feedback.is_some());
+
+        let updated_feedback = updated_criteria.feedback.unwrap();
+
+        assert_eq!(updated_feedback.like.unwrap(), vec![888, 1010, 1212]);
+
+        assert_eq!(
+            updated_feedback.dislike.unwrap(),
+            vec![111, 333, 555, 777, 999, 1111]
+        );
+    }
+
+    #[test]
+    fn test_update_feedback_criteria_empty_dislikes() {
+        let mut criteria = get_criteria();
+
+        let criteria_feedback = Feedback {
+            like: Some(vec![222, 444, 666]),
+            dislike: None,
+        };
+
+        let new_feedback = Feedback {
+            like: Some(vec![888, 1010, 1212]),
+            dislike: Some(vec![777, 999, 1111]),
+        };
+
+        criteria.feedback = Some(criteria_feedback);
+
+        let updated_criteria = update_feedback(criteria, new_feedback);
+
+        assert!(updated_criteria.feedback.is_some());
+
+        let updated_feedback = updated_criteria.feedback.unwrap();
+
+        assert_eq!(
+            updated_feedback.like.unwrap(),
+            vec![222, 444, 666, 888, 1010, 1212]
+        );
+
+        assert_eq!(updated_feedback.dislike.unwrap(), vec![777, 999, 1111]);
+    }
+
+    #[test]
+    fn test_update_feedback_empty_likes() {
+        let mut criteria = get_criteria();
+
+        let criteria_feedback = Feedback {
+            like: Some(vec![222, 444, 666]),
+            dislike: Some(vec![111, 333, 555]),
+        };
+
+        let new_feedback = Feedback {
+            like: None,
+            dislike: Some(vec![777, 999, 1111]),
+        };
+
+        criteria.feedback = Some(criteria_feedback);
+
+        let updated_criteria = update_feedback(criteria, new_feedback);
+
+        assert!(updated_criteria.feedback.is_some());
+
+        let updated_feedback = updated_criteria.feedback.unwrap();
+
+        assert_eq!(updated_feedback.like.unwrap(), vec![222, 444, 666]);
+
+        assert_eq!(
+            updated_feedback.dislike.unwrap(),
+            vec![111, 333, 555, 777, 999, 1111]
+        );
+    }
+
+    #[test]
+    fn test_update_feedback_empty_dislikes() {
+        let mut criteria = get_criteria();
+
+        let criteria_feedback = Feedback {
+            like: Some(vec![222, 444, 666]),
+            dislike: Some(vec![111, 333, 555]),
+        };
+
+        let new_feedback = Feedback {
+            like: Some(vec![888, 1010, 1212]),
+            dislike: None,
+        };
+
+        criteria.feedback = Some(criteria_feedback);
+
+        let updated_criteria = update_feedback(criteria, new_feedback);
+
+        assert!(updated_criteria.feedback.is_some());
+
+        let updated_feedback = updated_criteria.feedback.unwrap();
+
+        assert_eq!(
+            updated_feedback.like.unwrap(),
+            vec![222, 444, 666, 888, 1010, 1212]
+        );
+
+        assert_eq!(updated_feedback.dislike.unwrap(), vec![111, 333, 555]);
+    }
+
+    #[test]
+    fn test_update_feedback_empty_criteria() {
+        let mut criteria = get_criteria();
+
+        let criteria_feedback = Feedback {
+            like: None,
+            dislike: None,
+        };
+
+        let new_feedback = Feedback {
+            like: Some(vec![888, 1010, 1212]),
+            dislike: Some(vec![777, 999, 1111]),
+        };
+
+        criteria.feedback = Some(criteria_feedback);
+
+        let updated_criteria = update_feedback(criteria, new_feedback);
+
+        assert!(updated_criteria.feedback.is_some());
+
+        let updated_feedback = updated_criteria.feedback.unwrap();
+
+        assert_eq!(updated_feedback.like.unwrap(), vec![888, 1010, 1212]);
+
+        assert_eq!(updated_feedback.dislike.unwrap(), vec![777, 999, 1111]);
     }
 }
