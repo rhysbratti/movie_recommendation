@@ -431,24 +431,24 @@ impl Tmdb {
             Some(feedback) => {
                 match feedback.like {
                     Some(keywords) => url.push_str(&format!(
-                        "with_keywords={}",
+                        "&with_keywords={}",
                         keywords
                             .iter()
                             .map(|k| k.to_string())
                             .collect::<Vec<_>>()
-                            .join(",")
+                            .join("|")
                     )),
                     None => println!("Nothing"),
                 };
 
                 match feedback.dislike {
                     Some(keywords) => url.push_str(&format!(
-                        "without_keywords={}",
+                        "&without_keywords={}",
                         keywords
                             .iter()
                             .map(|k| k.to_string())
                             .collect::<Vec<_>>()
-                            .join(",")
+                            .join("|")
                     )),
                     None => println!("Nothing"),
                 };

@@ -231,6 +231,72 @@ async fn post_runtime(
         }
     }
 }
+/*
+fn update_feedback(
+    mut criteria: &RecommendationCriteria,
+    feedback: Feedback,
+) -> &RecommendationCriteria {
+    match criteria.feedback {
+        Some(mut criteria_feedback) => {
+            match criteria_feedback.like {
+                Some(mut likes) => match feedback.like {
+                    Some(mut feedback_likes) => {
+                        likes.append(&mut feedback_likes);
+                    }
+                    None => {}
+                },
+                None => match feedback.like {
+                    Some(feedback_likes) => criteria_feedback.like = Some(feedback_likes),
+                    None => {}
+                },
+            };
+            match criteria_feedback.dislike {
+                Some(mut dislikes) => match feedback.dislike {
+                    Some(mut feedback_dislikes) => {
+                        dislikes.append(&mut feedback_dislikes);
+                    }
+                    None => {}
+                },
+                None => match feedback.dislike {
+                    Some(feedback_dislikes) => criteria_feedback.dislike = Some(feedback_dislikes),
+                    None => {}
+                },
+            };
+        }
+        None => criteria.feedback = Some(feedback),
+    }
+
+    criteria
+}*/
+
+fn update_feedback(
+    mut criteria: RecommendationCriteria,
+    mut feedback: Feedback,
+) -> RecommendationCriteria {
+    if let Some(mut criteria_feedback) = criteria.feedback.take() {
+        if let Some(mut likes) = criteria_feedback.like.take() {
+            if let Some(feedback_likes) = feedback.like.take() {
+                likes.extend(feedback_likes);
+                criteria_feedback.like = Some(likes);
+            }
+        } else {
+            criteria_feedback.like = feedback.like;
+        }
+        if let Some(mut dislikes) = criteria_feedback.dislike.take() {
+            if let Some(feedback_dislikes) = feedback.dislike.take() {
+                dislikes.extend(feedback_dislikes);
+                criteria_feedback.dislike = Some(dislikes);
+            }
+        } else {
+            criteria_feedback.dislike = feedback.dislike;
+        }
+        criteria.feedback = Some(criteria_feedback);
+    } else {
+        criteria.feedback = Some(feedback);
+    }
+
+    criteria
+}
 
 #[post("/feedback/{session_id}")]
 async fn post_feedback(
@@ -239,7 +305,6 @@ async fn post_feedback(
 ) -> impl Responder {
     let tmdb = Tmdb::shared_instance();
     let feedback = feedback.into_inner();
-
     match redis_helper::criteria_from_cache(&session_id).await {
         Err(err) => HttpResponse::InternalServerError()
             .json(format!("Error fetching session {} : {}", session_id, err)),
@@ -251,10 +316,20 @@ async fn post_feedback(
             )
             .await;
 
-            criteria.feedback = Some(Feedback {
-                like: Some(upvotes),
-                dislike: Some(downvotes),
-            });
+            let feedback = Feedback {
+                like: match upvotes.is_empty() {
+                    true => None,
+                    false => Some(upvotes),
+                },
+                dislike: match downvotes.is_empty() {
+                    true => None,
+                    false => Some(downvotes),
+                },
+            };
+
+            let criteria = update_feedback(criteria, feedback);
+
+            println!("Posting feedback");
 
             match redis_helper::criteria_to_cache(&session_id, criteria).await {
                 Err(err) => {
