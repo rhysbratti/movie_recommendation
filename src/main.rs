@@ -18,13 +18,15 @@ mod tmdb_helper;
 async fn main() -> std::io::Result<()> {
     println!("starting server on port 8585");
 
-    let tmdb = Tmdb::shared_instance();
+    console_error_panic_hook::set_once();
+
+    let tmdb = Tmdb::new();
     HttpServer::new(move || {
         let cors = Cors::permissive();
 
         App::new()
             .wrap(cors)
-            .app_data(web::Data::new(Arc::clone(&tmdb)))
+            .app_data(web::Data::new(tmdb.clone()))
             .service(get_runtimes)
             .service(get_decades)
             .service(get_simple_watch_providers)
@@ -75,6 +77,7 @@ async fn get_decades() -> impl Responder {
 
 #[get("/simplewatchproviders")]
 async fn get_simple_watch_providers(tmdb: web::Data<Tmdb>) -> impl Responder {
+    let tmdb: Arc<Tmdb> = tmdb.into_inner();
     let providers = tmdb.get_providers_list();
     let supported_providers = vec![
         "Netflix",
@@ -88,6 +91,7 @@ async fn get_simple_watch_providers(tmdb: web::Data<Tmdb>) -> impl Responder {
         "Crunchyroll",
         "Paramount Plus",
     ];
+    println!("Getting watch providers");
     match providers.await {
         Err(err) => HttpResponse::InternalServerError().json("Error fetching providers"),
         Ok(providers) => {
@@ -273,8 +277,9 @@ fn update_feedback(
 async fn post_feedback(
     session_id: web::Path<String>,
     feedback: web::Json<Feedback>,
+    tmdb: web::Data<Tmdb>,
 ) -> impl Responder {
-    let tmdb = Tmdb::shared_instance();
+    let tmdb = tmdb.into_inner();
     let feedback = feedback.into_inner();
     match redis_helper::criteria_from_cache(&session_id).await {
         Err(err) => HttpResponse::InternalServerError()
@@ -322,8 +327,11 @@ async fn get_session_criteria(session_id: web::Path<String>) -> impl Responder {
 }
 
 #[get("/recommend/{session_id}")]
-async fn get_recommendations(session_id: web::Path<String>) -> impl Responder {
-    let tmdb = Tmdb::shared_instance();
+async fn get_recommendations(
+    session_id: web::Path<String>,
+    tmdb: web::Data<Tmdb>,
+) -> impl Responder {
+    let tmdb = tmdb.into_inner();
 
     match tmdb_helper::get_recommendations_for_session(tmdb, session_id.into_inner()).await {
         Err(err) => HttpResponse::InternalServerError()
@@ -351,8 +359,8 @@ async fn get_recommendations(session_id: web::Path<String>) -> impl Responder {
 }
 
 #[get("/genres")]
-async fn get_genres() -> impl Responder {
-    let tmdb = Tmdb::shared_instance();
+async fn get_genres(tmdb: web::Data<Tmdb>) -> impl Responder {
+    let tmdb = tmdb.into_inner();
 
     let genre_list = tmdb.get_genre_list().await;
 
